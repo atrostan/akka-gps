@@ -4,9 +4,17 @@ import akka.actor.Actor
 import akka.actor.ActorSystem
 import akka.actor.Props
 
+import akka.actor.typed._
+import akka.actor.typed.scaladsl._
+import akka.cluster.ClusterEvent._
+import akka.cluster.MemberStatus
+import akka.cluster.typed._
+
 import scalax.collection.edge.Implicits._
 import scalax.collection.Graph // or scalax.collection.mutable.Graph
 import scalax.collection.GraphPredef._, scalax.collection.GraphEdge._
+
+import com.typesafe.config.ConfigFactory
 
 class HelloActor extends Actor {
   def receive = {
@@ -36,6 +44,33 @@ object Main extends App {
 
   val nodes = g.nodes
   nodes.foreach(n => println(n))
+
+  // config a cluster
+  val configSystem1 = ConfigFactory.parseString(s"""
+    akka.loglevel = DEBUG
+    #config-seeds
+    akka {
+      actor {
+        provider = "cluster"
+      }
+      remote.artery {
+        canonical {
+          hostname = "127.0.0.1"
+          port = 2551
+        }
+      }
+
+      cluster {
+        seed-nodes = [
+          "akka://ClusterSystem@127.0.0.1:2551",
+          "akka://ClusterSystem@127.0.0.1:2552"]
+
+        downing-provider-class = "akka.cluster.sbr.SplitBrainResolverProvider"
+      }
+    }
+    #config-seeds
+     """)
+
   helloActor ! "hello"
   helloActor ! "buenos dias"
 }

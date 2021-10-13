@@ -3,7 +3,7 @@ package com.cluster.graph
 import akka.actor.typed.ActorRef
 import akka.actor.typed.Behavior
 import akka.actor.typed.scaladsl.Behaviors
-import sample.cluster.CborSerializable
+import com.CborSerializable
 
 import scala.concurrent.duration._
 
