@@ -30,7 +30,7 @@ object AppOneMaster {
 
           VertexService(workersRouter)
         },
-        "StatsService"
+        "VertexService"
       ).withStopMessage(VertexService.Stop)
         .withSettings(singletonSettings)
       val serviceProxy = ClusterSingleton(ctx.system).init(serviceSingleton)
@@ -46,10 +46,9 @@ object AppOneMaster {
             .Register(WorkerServiceKey, worker)
         }
       }
-      // no client in vector service
-      //      if (cluster.selfMember.hasRole("client")) {
-      //        ctx.spawn(StatsClient(serviceProxy), "Client")
-      //      }
+      if (cluster.selfMember.hasRole("client")) {
+        ctx.spawn(VertexClient(serviceProxy), "Client")
+      }
       Behaviors.empty
     }
   }
@@ -59,7 +58,7 @@ object AppOneMaster {
       startup("compute", 25251)
       startup("compute", 25252)
       startup("compute", 0)
-      //      startup("client", 0)
+      startup("client", 0)
     } else {
       require(args.size == 2, "Usage: role port")
       startup(args(0), args(1).toInt)
@@ -73,7 +72,7 @@ object AppOneMaster {
       akka.remote.artery.canonical.port=$port
       akka.cluster.roles = [$role]
       """)
-      .withFallback(ConfigFactory.load("stats"))
+      .withFallback(ConfigFactory.load("cluster"))
 
     ActorSystem[Nothing](RootBehavior(), "ClusterSystem", config)
   }
