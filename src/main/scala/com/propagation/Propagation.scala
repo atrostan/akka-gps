@@ -1,5 +1,5 @@
 //#full-example
-package com.example
+package com.propagation
 
 
 import akka.actor.typed.ActorRef
@@ -10,7 +10,7 @@ import scalax.collection.Graph
 import scalax.collection.GraphBase
 import scalax.collection.GraphPredef._, scalax.collection.GraphEdge._
 import scala.collection.immutable.Vector
-import com.example.VertexMain.StartProcessing // ASK Why does this work
+import com.propagation.VertexMain.StartProcessing // ASK Why does this work
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.Map
 
