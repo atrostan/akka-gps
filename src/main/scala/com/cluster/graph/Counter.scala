@@ -1,4 +1,4 @@
-package com.cshard
+package com.cluster.graph
 
 import scala.concurrent.duration._
 import akka.actor.typed.{ActorRef, Behavior}
@@ -6,9 +6,10 @@ import akka.actor.typed.scaladsl.Behaviors
 import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityContext, EntityTypeKey}
 import com.CborSerializable
 
-import java.io.{File, FileOutputStream}
 
-//#counter
+
+// counter actor
+// TODO modify this to encapsulate actions and state for Vertex Actors (both mains, mirrors?)
 object Counter {
   sealed trait Command extends CborSerializable
 
@@ -30,18 +31,16 @@ object Counter {
              nodeAddress: String,
              entityContext: EntityContext[Command],
            ): Behavior[Command] = {
-    val fos = new FileOutputStream(new File("./tmp"), true)
+
     Behaviors.setup { ctx =>
-      println("this should be added: ", (nodeAddress, entityContext.entityId, ctx.self.path.toString))
 
       def updated(value: Int): Behavior[Command] = {
         Behaviors.receiveMessage[Command] {
           case Increment =>
-            ctx.log.info("******************{} counting at {},{}, hashcode {}", ctx.self.path, nodeAddress, entityContext.entityId, entityContext.entityId.hashCode)
+            ctx.log.info("******************{} counting at {},{}", ctx.self.path, nodeAddress, entityContext.entityId)
             updated(value + 1)
           case GetValue(replyTo) =>
-            ctx.log.info("******************{} get value at {},{}, hashcode {}", ctx.self.path, nodeAddress, entityContext.entityId, entityContext.entityId.hashCode)
-            ctx.log.info("****************** entityId value: ")
+            ctx.log.info("******************{} get value at {},{}", ctx.self.path, nodeAddress, entityContext.entityId)
             replyTo ! SubTtl(entityContext.entityId, value)
             Behaviors.same
           case Idle =>

@@ -1,4 +1,4 @@
-package com.cshard
+package com.cluster.graph
 
 import akka.actor.typed._
 import akka.cluster.Member
@@ -6,23 +6,17 @@ import com.typesafe.config.ConfigFactory
 
 object ClusterShardingApp {
 
-  type PartitionMap = collection.mutable.Map[Int, Int]
-  object PartitionMap {
-    def empty: PartitionMap = collection.mutable.Map.empty
-    def apply(pairs: (Int,Int)*): PartitionMap = collection.mutable.Map(pairs:_*)
-  }
-
-  val myPMap: PartitionMap = collection.mutable.Map[Int,Int]()
-
-  type ImPartitionMap = collection.immutable.Map[Int, Int]
-  type MyType = (String, Int, Double)
-
-  val myType: MyType = ("s", 3, 3.2)
-
+  // example of how to define a custom type
+  // TODO use more type aliases in project
+  //  type PartitionMap = collection.mutable.Map[Int, Int]
+  //  object PartitionMap {
+  //    def empty: PartitionMap = collection.mutable.Map.empty
+  //    def apply(pairs: (Int,Int)*): PartitionMap = collection.mutable.Map(pairs:_*)
+  //  }
+  //
+  //  val myPMap: PartitionMap = collection.mutable.Map[Int,Int]()
 
   def main(args: Array[String]): Unit = {
-    var pid: Int = 0;
-    println(args)
     val partitionMap = collection.mutable.Map[Int, Int]()
     if (args.isEmpty) {
       startup("domainListener", 25251, partitionMap)
@@ -33,7 +27,7 @@ object ClusterShardingApp {
       ports.foreach(p => {
         partitionMap(i) = p
         startup("shard", p, partitionMap)
-        i+=1
+        i += 1
       })
 
       startup("front", 25255, partitionMap)
@@ -51,26 +45,17 @@ object ClusterShardingApp {
       akka.remote.artery.canonical.port=$port
       akka.cluster.roles = [$role]
       """)
-      .withFallback(ConfigFactory.load("clustereg"))
+      .withFallback(ConfigFactory.load("cluster"))
 
-    //    var nodesUp = collection.mutable.Set[String]()
     var nodesUp = collection.mutable.Set[Member]()
 
-
     if (role == "domainListener") {
-      ActorSystem(ClusterMemberEventListener(nodesUp), "ClusterSystem", config)
-    } else if (role == "tracker") {
-
+      // enable ClusterMemberEventListener for logging purposes
+       ActorSystem(ClusterMemberEventListener(nodesUp), "ClusterSystem", config)
     }
     else {
-
       val entityManager = ActorSystem[EntityManager.Command](
         EntityManager(partitionMap), "ClusterSystem", config)
-      //    entityManager.systemActorOf(cluster)
-
-      //      entityManager.
-      //    Await.result(entityManager, 15)
-      //      entityManager.
       if (role == "front") {
         entityManager ! EntityManager.AddOne("9013")
         entityManager ! EntityManager.AddOne("9014")
@@ -87,17 +72,7 @@ object ClusterShardingApp {
         entityManager ! EntityManager.GetSum("9015")
         entityManager ! EntityManager.GetSum("9013")
         entityManager ! EntityManager.GetSum("9016")
-//        entityManager ! EntityManager.GetSum("9216")
-//        entityManager ! EntityManager.GetSum("9116")
-//        entityManager ! EntityManager.GetSum("90136")
-//        entityManager ! EntityManager.GetSum("90126")
-//        entityManager ! EntityManager.GetSum("90136")
-//        entityManager ! EntityManager.GetSum("90126")
-//        entityManager ! EntityManager.GetSum("9116")
       }
-
     }
-
   }
-
 }

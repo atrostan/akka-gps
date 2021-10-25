@@ -1,4 +1,4 @@
-package com.cshard
+package com.cluster.graph
 
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{Behavior, PostStop}
@@ -8,7 +8,12 @@ import akka.cluster.{Member, MemberStatus}
 
 object ClusterMemberEventListener {
 
-  def apply(nodesUp: collection.mutable.Set[Member]): Behavior[ClusterDomainEvent] = Behaviors.setup[ClusterDomainEvent] { context =>
+  type MemberSet = collection.mutable.Set[Member]
+  object MemberSet {
+    def empty: MemberSet = collection.mutable.Set.empty
+    def apply(ms: (Member)*): MemberSet = collection.mutable.Set(ms:_*)
+  }
+  def apply(nodesUp: MemberSet): Behavior[ClusterDomainEvent] = Behaviors.setup[ClusterDomainEvent] { context =>
     Cluster(context.system).subscriptions ! Subscribe(
       context.self,
       classOf[ClusterDomainEvent])
@@ -17,22 +22,12 @@ object ClusterMemberEventListener {
       .receiveMessage[ClusterDomainEvent] {
 
         case MemberJoined(member) =>
-          //          println("joinyjoin")
           context.log.info(s"$member JOINED")
           Behaviors.same
 
         case MemberUp(member) =>
           nodesUp += member
           context.log.info(s"$member UP.")
-          //          println("current nodes up: ")
-          //          nodesUp.foreach{ n  =>
-          //            println (n)
-          //            println("n.address", n.address)
-          //            println("n.hashCode()", n.hashCode())
-          //            println("n.roles", n.roles)
-          //            println("n.status", n.status)
-          //            println("n.uniqueAddress", n.uniqueAddress)
-          //          }
           Behaviors.same
 
         case MemberExited(member) =>
@@ -62,15 +57,6 @@ object ClusterMemberEventListener {
         case MemberReadyForShutdown(m) =>
           context.log.info(s"$m ReadyForShutdown")
           Behaviors.same
-
-        //        case ReachabilityChanged(m) =>
-        //          context.log.info(s"reachability changed for $m")
-        //          Behaviors.same
-        //
-        //        case SeenChanged(convergence, seenBy) =>
-        //          context.log.info(s"convergence is $convergence")
-        //          context.log.info(s"$seenBy")
-        //          Behaviors.same
 
         case event =>
           context.log.info(s"not handling ${event.toString}")
