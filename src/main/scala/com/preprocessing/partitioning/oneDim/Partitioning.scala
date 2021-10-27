@@ -11,6 +11,14 @@ class Partitioning(P: Int, n: Int, m: Int) {
   val nEdges: Int = m
   var partitions: ArrayBuffer[Partition] = ArrayBuffer[Partition]()
 
+  def replicationFactor(): Double = {
+    // (all mirrors) / nNodes
+    // http://www.vldb.org/pvldb/vol12/p321-gill.pdf: "average number of proxies per node"
+    // TODO; unsure if to include mains in the calculation; currently exclude
+    // i.e. (all mirrors + all mains) / nNodes
+     mainArray.map(m => m.mirrors.size).sum.toFloat / nNodes
+  }
+
   def partitionEdges(es: ArrayBuffer[Edge]): Unit = {
     for (e <- es) {
       // assign edges to partitions
@@ -94,7 +102,6 @@ class Partitioning(P: Int, n: Int, m: Int) {
     }
     s
   }
-
 }
 
 object Partitioning {
@@ -103,6 +110,7 @@ object Partitioning {
     png.init()
     png.partitionEdges(es)
     png.assignMainsMirrors()
+
     png
   }
 }
