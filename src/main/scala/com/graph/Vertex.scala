@@ -1,4 +1,4 @@
-package com.preprocessing.partitioning.oneDim
+package com.graph
 
 import scala.collection.mutable.ArrayBuffer
 

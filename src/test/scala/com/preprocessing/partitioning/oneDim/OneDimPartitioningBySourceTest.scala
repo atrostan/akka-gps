@@ -1,5 +1,6 @@
 package com.preprocessing.partitioning.oneDim
 
+import com.graph.{Edge, Vertex}
 import org.scalatest._
 
 import scala.collection.mutable.ArrayBuffer
@@ -31,7 +32,7 @@ class OneDimPartitioningBySourceTest extends FunSuite with Matchers {
   val e9 = Edge(v4, v0)
 
   val es = Seq(e0, e1, e2, e3, e4, e5, e6, e7, e8, e9)
-  edges.addAll(es)
+  edges ++= es
   val png = Partitioning(nPartitions, edges, nNodes, nEdges)
 
 

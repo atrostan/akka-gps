@@ -6,13 +6,14 @@ name := "akka-quickstart-scala"
 version := "1.0"
 
 lazy val akkaVersion = "2.6.16"
+lazy val sparkVersion = "3.2.0"
 
 lazy val `akka-gps` = project
   .in(file("."))
   .settings(multiJvmSettings: _*)
   .settings(
 //    organization := "com.lightbend.akka.samples",
-    scalaVersion := "2.13.1",
+    scalaVersion := "2.12.15",
     Compile / scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-Xlog-reflective-calls", "-Xlint"),
     Compile / javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation"),
     run / javaOptions ++= Seq("-Xms128m", "-Xmx1024m", "-Djava.library.path=./target/native"),
@@ -25,9 +26,10 @@ lazy val `akka-gps` = project
       "com.typesafe.akka" %% "akka-multi-node-testkit"     % akkaVersion % Test,
       "org.scalatest"     %% "scalatest"                   % "3.0.8"     % Test,
       "com.typesafe.akka" %% "akka-actor-testkit-typed"    % akkaVersion % Test,
-      "org.scala-graph"   %% "graph-core"                  % "1.13.3",
       "com.typesafe.akka" %% "akka-persistence-typed"      % akkaVersion,
       "com.typesafe.akka" %% "akka-persistence-testkit"    % akkaVersion % Test,
+      "org.apache.spark" %% "spark-core" % sparkVersion,
+      "org.apache.spark" %% "spark-streaming" % sparkVersion,
       "org.slf4j" % "slf4j-api" % "1.7.32",
       "org.slf4j" % "slf4j-simple" % "1.7.32",
       "org.clapper" %% "grizzled-slf4j" % "1.3.4",

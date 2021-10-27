@@ -1,10 +1,18 @@
-package com.preprocessing.partitioning.oneDim
+package com.preprocessing.edgeList
 
 import com.graph.{Edge, Vertex}
+
 import scala.collection.mutable.ArrayBuffer
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkConf
 
 object Driver {
   def main(args: Array[String]): Unit = {
+
+    val appName: String = "edgeList.Compressor.Driver"
+    val conf = new SparkConf().setAppName(appName).setMaster("local[*]")
+    val sc = new SparkContext(conf)
+    println(sc)
 
     val edges = ArrayBuffer[Edge]()
     val nPartitions: Int = 4
@@ -30,7 +38,5 @@ object Driver {
 
     val es = Seq(e0, e1, e2, e3, e4, e5, e6, e7, e8, e9)
     edges ++= es
-    val png = Partitioning(nPartitions, edges, nNodes, nEdges)
-    val ma: Array[Main] = png.mainArray
   }
 }
