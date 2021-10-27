@@ -1,16 +1,20 @@
 package com.preprocessing.partitioning.oneDim
 
-class Edge {
+class Edge(u: Vertex, v: Vertex) {
   var id: Int = -1 // needed?
-  var source: Vertex = _
-  var dest: Vertex = _
+  val source: Vertex = u
+  val dest: Vertex = v
+
+  override def toString(): String = {
+    var s: String = ""
+    s += s"Edge (${source}, ${dest})"
+    s
+  }
 }
 
 object Edge {
-  def apply(source: Vertex, dest: Vertex): Edge = {
-    val e = new Edge
-    e.source = source
-    e.dest = dest
+  def apply(u: Vertex, v: Vertex): Edge = {
+    val e = new Edge(u, v)
     e
   }
 }

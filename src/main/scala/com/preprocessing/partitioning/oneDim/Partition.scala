@@ -2,27 +2,35 @@ package com.preprocessing.partitioning.oneDim
 
 import scala.collection.mutable.ArrayBuffer
 
-class Partition {
-  var id: Int = -1
-  var vertices = ArrayBuffer[Vertex]() // main vertices
-  var edges = ArrayBuffer[Edge]()
-  var adjacencyList = ArrayBuffer[ArrayBuffer[Int]]() // local to this partition
-  var mains = ArrayBuffer[Int]()
-  var mirrors = ArrayBuffer[Int]()
+class Partition(pid: Int){
 
-  def add(v: Vertex): Unit = {
-    vertices.addOne(v)
+  // empty at vertex id i, if no vertex mirror exists in partition
+  // otherwise, contains reference to vertex mirror
+  // TODO; optimization; a bitSet to indicate existence of mirror in partition
+  type MirrorMap = collection.mutable.Map[Int, Mirror]
+  object MirrorMap {
+    def empty: MirrorMap = collection.mutable.Map.empty
+    def apply(ms: (Int, Mirror)*): MirrorMap = collection.mutable.Map(ms:_*)
   }
+
+  val id: Int = pid
+  var edges = ArrayBuffer[Edge]() // the subgraph in this partition
+  var mirrorMap = MirrorMap()
 
   def add(e: Edge): Unit = {
     edges.addOne(e)
+  }
+
+  override def toString(): String = {
+    var s: String = ""
+    s += s"Partition ${id}"
+    s
   }
 }
 
 object Partition {
   def apply(pid: Int): Partition = {
-    val p = new Partition
-    p.id = pid
+    val p = new Partition(pid)
     p
   }
 }
