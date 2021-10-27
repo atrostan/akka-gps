@@ -5,14 +5,21 @@ import com.graph.{Edge, Vertex}
 import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
+import org.apache.spark.rdd.RDD
 
 object Driver {
   def main(args: Array[String]): Unit = {
 
     val appName: String = "edgeList.Compressor.Driver"
+    val graphPath: String = "src/main/resources/shuffled"
+
     val conf = new SparkConf().setAppName(appName).setMaster("local[*]")
     val sc = new SparkContext(conf)
     println(sc)
+
+    val distFile: RDD[String] = sc.textFile(graphPath)
+
+    distFile.foreach(println)
 
     val edges = ArrayBuffer[Edge]()
     val nPartitions: Int = 4

@@ -13,8 +13,8 @@ lazy val `akka-gps` = project
   .settings(multiJvmSettings: _*)
   .settings(
 //    organization := "com.lightbend.akka.samples",
-    scalaVersion := "2.12.15",
-    Compile / scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-Xlog-reflective-calls", "-Xlint"),
+    scalaVersion := "2.12",
+    Compile / scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-Xlog-reflective-calls", "-Xlint", "-target:jvm-1.8"),
     Compile / javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation"),
     run / javaOptions ++= Seq("-Xms128m", "-Xmx1024m", "-Djava.library.path=./target/native"),
     libraryDependencies ++= Seq(
@@ -22,7 +22,6 @@ lazy val `akka-gps` = project
       "com.typesafe.akka" %% "akka-cluster-typed"          % akkaVersion,
       "com.typesafe.akka" %% "akka-serialization-jackson"  % akkaVersion,
       "com.typesafe.akka" %% "akka-cluster-sharding-typed" % akkaVersion,
-      "ch.qos.logback"    %  "logback-classic"             % "1.2.3",
       "com.typesafe.akka" %% "akka-multi-node-testkit"     % akkaVersion % Test,
       "org.scalatest"     %% "scalatest"                   % "3.0.8"     % Test,
       "com.typesafe.akka" %% "akka-actor-testkit-typed"    % akkaVersion % Test,
@@ -30,9 +29,6 @@ lazy val `akka-gps` = project
       "com.typesafe.akka" %% "akka-persistence-testkit"    % akkaVersion % Test,
       "org.apache.spark" %% "spark-core" % sparkVersion,
       "org.apache.spark" %% "spark-streaming" % sparkVersion,
-      "org.slf4j" % "slf4j-api" % "1.7.32",
-      "org.slf4j" % "slf4j-simple" % "1.7.32",
-      "org.clapper" %% "grizzled-slf4j" % "1.3.4",
     ),
     run / fork := false,
     Global / cancelable := false,
