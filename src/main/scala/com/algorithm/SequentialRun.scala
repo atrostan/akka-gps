@@ -6,17 +6,17 @@ import scalax.collection.GraphPredef._, scalax.collection.GraphEdge._
 import scalax.collection.edge.WDiEdge
 
 object SequentialRun {
-  def apply(vertexProgram: VertexProgram[Int, Int, Int, Int, Int], graph: Graph[Int, WDiEdge])
-    (initialStates: Map[graph.NodeT, Int], initialActiveMap: Map[graph.NodeT, Boolean]): Map[graph.NodeT, Int] = {
+  def apply[VertexIdT, MessageT, AccumulatorT, VertexValT](vertexProgram: VertexProgram[VertexIdT, Int, MessageT, AccumulatorT, VertexValT], graph: Graph[VertexIdT, WDiEdge])
+    (initialStates: Map[graph.NodeT, VertexValT], initialActiveMap: Map[graph.NodeT, Boolean]): Map[graph.NodeT, VertexValT] = {
 
     type Vertex = graph.NodeT
     // var vertices: Seq[Int] = graph.nodes.toSeq.mzap({x:graph.NodeT => x.value})
     var vertices = graph.nodes
     var states = initialStates
     var activeMap = initialActiveMap
-    val emptyMailboxes: Map[Vertex, Map[WDiEdge[Vertex], Int]] = vertices.map(vtx => (vtx, Map.empty[WDiEdge[Vertex], Int])).toMap
-    var currentMailboxes: Map[Vertex, Map[WDiEdge[Vertex], Int]] = emptyMailboxes
-    var nextMailboxes: Map[Vertex, Map[WDiEdge[Vertex], Int]] = emptyMailboxes
+    val emptyMailboxes: Map[Vertex, Map[WDiEdge[Vertex], MessageT]] = vertices.map(vtx => (vtx, Map.empty[WDiEdge[Vertex], MessageT])).toMap
+    var currentMailboxes: Map[Vertex, Map[WDiEdge[Vertex], MessageT]] = emptyMailboxes
+    var nextMailboxes: Map[Vertex, Map[WDiEdge[Vertex], MessageT]] = emptyMailboxes
     var superstep = -1
 
     // println("Vertices: " + vertices)
@@ -39,8 +39,8 @@ object SequentialRun {
         progressFlag = true
 
         // Gather
-        var accumulator: Option[Int] = None
-        val messages: Map[WDiEdge[Vertex], Int] = currentMailboxes(vtx)
+        var accumulator: Option[AccumulatorT] = None
+        val messages: Map[WDiEdge[Vertex], MessageT] = currentMailboxes(vtx)
         for((edge, msg) <- messages) {
           val gatheredMsg = vertexProgram.gather(edge.weight.toInt, msg)
           accumulator match {
@@ -48,14 +48,14 @@ object SequentialRun {
               accumulator = Some(gatheredMsg)
             }
             case Some(acc) => {
-              accumulator = Some(Math.min(acc, gatheredMsg))
+              accumulator = Some(vertexProgram.sum(acc, gatheredMsg))
             }
           }
         }
 
         // Apply
         val oldVal = states(vtx)
-        val newVal = vertexProgram.apply(vtx.value, oldVal, accumulator)
+        val newVal = vertexProgram.apply(superstep, vtx.value, oldVal, accumulator)
         states = states.updated(vtx, newVal)
 
         // Scatter
@@ -63,7 +63,7 @@ object SequentialRun {
           edge <- graph.edges
           if edge._1 == vtx
           dest = edge._2
-          msg <- vertexProgram.scatter(oldVal, newVal)
+          msg <- vertexProgram.scatter(vtx, oldVal, newVal)
         } {
           nextMailboxes = nextMailboxes.updated(dest, nextMailboxes(dest).updated(edge, msg))
         }

@@ -1,16 +1,16 @@
 package com.algorithm
 
 // Stateless
-trait VertexProgram[VertexId, EdgeVal, Message, Accumulator, VertexVal] {
-  def gather(edgeVal: EdgeVal, message: Message): Accumulator
+trait VertexProgram[VertexIdT, EdgeValT, MessageT, AccumulatorT, VertexValT] {
+  def gather(edgeVal: EdgeValT, message: MessageT): AccumulatorT
 
-  def sum(a: Accumulator, b: Accumulator): Accumulator
+  def sum(a: AccumulatorT, b: AccumulatorT): AccumulatorT
 
-  def apply(thisVertex: VertexId, oldVal: VertexVal, total: Option[Accumulator]): VertexVal
+  def apply(superStepNumber: Int, thisVertexId: VertexIdT, oldVal: VertexValT, total: Option[AccumulatorT]): VertexValT
 
-  def scatter(oldVal: VertexVal, newVal: VertexVal): Option[Message]
+  def scatter(thisVertexId: VertexIdT, oldVal: VertexValT, newVal: VertexValT): Option[MessageT]
 
-  def voteToHalt(oldVal: VertexVal, newVal: VertexVal): Boolean
+  def voteToHalt(oldVal: VertexValT, newVal: VertexValT): Boolean
 }
 
 
