@@ -21,13 +21,22 @@ object SequentialRun {
 
     // println("Vertices: " + vertices)
 
-    while(true) {
+    def sendMessage(dest: Vertex, edge: graph.EdgeT, msg: MessageT): Unit = {
+      nextMailboxes = nextMailboxes.updated(dest, nextMailboxes(dest).updated(edge, msg))
+    }
+    def outEdges(src: Vertex): Iterable[graph.EdgeT] = {
+      graph.edges.filter(edge => edge._1 == src)
+    } 
+
+    var progressFlag = true
+
+    while(progressFlag) {
       // Superstep
       superstep += 1
       // println("Superstep: " + superstep)
       // println("States   : " + states)
       // println("Messages : " + currentMailboxes)
-      var progressFlag = false
+      progressFlag = false
       
       // Iterate over vertices
       for {
@@ -39,33 +48,29 @@ object SequentialRun {
         progressFlag = true
 
         // Gather
-        var accumulator: Option[AccumulatorT] = None
         val messages: Map[WDiEdge[Vertex], MessageT] = currentMailboxes(vtx)
-        for((edge, msg) <- messages) {
-          val gatheredMsg = vertexProgram.gather(edge.weight.toInt, msg)
-          accumulator match {
-            case None => {
-              accumulator = Some(gatheredMsg)
-            }
-            case Some(acc) => {
-              accumulator = Some(vertexProgram.sum(acc, gatheredMsg))
+        val finalAccumulator = messages.foldLeft[Option[AccumulatorT]](None) {
+          case (accOption, (edge, msg)) => {
+            val gatheredMsg = vertexProgram.gather(edge.weight.toInt, msg)
+            accOption match {
+              case None => Some(gatheredMsg)
+              case Some(accSoFar) => Some(vertexProgram.sum(accSoFar, gatheredMsg))
             }
           }
         }
 
         // Apply
         val oldVal = states(vtx)
-        val newVal = vertexProgram.apply(superstep, vtx.value, oldVal, accumulator)
+        val newVal = vertexProgram.apply(superstep, vtx.value, oldVal, finalAccumulator)
         states = states.updated(vtx, newVal)
 
         // Scatter
         for {
-          edge <- graph.edges
-          if edge._1 == vtx
+          edge <- outEdges(vtx)
           dest = edge._2
           msg <- vertexProgram.scatter(vtx, oldVal, newVal)
         } {
-          nextMailboxes = nextMailboxes.updated(dest, nextMailboxes(dest).updated(edge, msg))
+          sendMessage(dest, edge, msg)
         }
 
         val activation = !vertexProgram.voteToHalt(oldVal, newVal)
@@ -74,10 +79,7 @@ object SequentialRun {
 
       currentMailboxes = nextMailboxes
       nextMailboxes = emptyMailboxes
-      if(progressFlag == false) {
-        return states
-      }
     }
-    ??? // Unreachable
+    states
   }
 }
