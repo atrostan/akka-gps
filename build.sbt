@@ -6,7 +6,23 @@ name := "akka-gps"
 version := "1.0"
 
 lazy val akkaVersion = "2.6.16"
-lazy val sparkVersion = "3.2.0"
+lazy val sparkVersion = "3.1.2"
+
+ThisBuild / assemblyMergeStrategy := {
+  case PathList("javax", "servlet", xs @ _*)         => MergeStrategy.first
+  case PathList(ps @ _*) if ps.last endsWith ".html" => MergeStrategy.first
+  case PathList("org", "apache", "spark", "unused", "UnusedStubClass.class")         => MergeStrategy.first
+  case "application.conf"                            => MergeStrategy.concat
+  case "unwanted.txt"                                => MergeStrategy.discard
+  case PathList("org", "apache", "hadoop", "yarn", "factories", "package-info.class")         => MergeStrategy.discard
+  case PathList("org", "apache", "hadoop", "yarn", "provider", "package-info.class")         => MergeStrategy.discard
+  case PathList("org", "apache", "hadoop", "util", "provider", "package-info.class")         => MergeStrategy.discard
+  case PathList("org", "apache", "spark", "unused", "UnusedStubClass.class")         => MergeStrategy.first
+  case PathList("org", "aopalliance", "intercept", "MethodInvocation.class") => MergeStrategy.first
+  case x =>
+    val oldStrategy = (ThisBuild / assemblyMergeStrategy).value
+    oldStrategy(x)
+}
 
 lazy val `akka-gps` = project
   .in(file("."))
