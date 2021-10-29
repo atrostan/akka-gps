@@ -14,7 +14,7 @@ runMain com.preprocessing.edgeList.Compressor
 --outputFilename: output path
 --sep:            separator used in input edge list (e.g. " ", ",",  "\t")
 
-runMain com.preprocessing.edgeList.Compressor --nNodes 5 --nEdges 7 --inputFilename "src/main/resources/gaps" --outputFilename "src/main/resources/reset"
+runMain com.preprocessing.edgeList.Compressor --nNodes 5 --nEdges 7 --inputFilename "src/main/resources/gaps" --outputFilename "src/main/resources/reset" --sep " "
 
 runMain com.preprocessing.edgeList.Compressor --nNodes 1005 --nEdges 25571 --inputFilename "src/main/resources/graphs/email-Eu-core/orig.net" --outputFilename "src/main/resources/graphs/email-Eu-core/reset" --sep " "
 
@@ -185,12 +185,9 @@ The edgeList.Compressor will produce
     println(vid)
     println(vid.hashCode())
     println("stopping spark context...")
-    sc.stop()
-
-    // Cleaner thread interrupted, will stop
+    // TODO; Figure out: Cleaner thread interrupted, will stop
     // java.lang.InterruptedException
     // https://stackoverflow.com/a/45301125
-    // sc.stop()
-
+    sc.stop()
   }
 }
