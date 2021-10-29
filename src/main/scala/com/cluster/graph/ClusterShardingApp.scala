@@ -54,24 +54,25 @@ object ClusterShardingApp {
        ActorSystem(ClusterMemberEventListener(nodesUp), "ClusterSystem", config)
     }
     else {
-      val entityManager = ActorSystem[EntityManager.Command](
-        EntityManager(partitionMap), "ClusterSystem", config)
+      val entityManager = 
+        ActorSystem[VertexEntityManager.Command](VertexEntityManager(partitionMap), "ClusterSystem", config)
+
       if (role == "front") {
-        entityManager ! EntityManager.AddOne("9013")
-        entityManager ! EntityManager.AddOne("9014")
-        entityManager ! EntityManager.AddOne("9013")
-        entityManager ! EntityManager.AddOne("9015")
-        entityManager ! EntityManager.AddOne("9013")
-        entityManager ! EntityManager.AddOne("9014")
-        entityManager ! EntityManager.AddOne("9014")
-        entityManager ! EntityManager.AddOne("9013")
-        entityManager ! EntityManager.AddOne("9015")
-        entityManager ! EntityManager.AddOne("9015")
-        entityManager ! EntityManager.AddOne("9016")
-        entityManager ! EntityManager.GetSum("9014")
-        entityManager ! EntityManager.GetSum("9015")
-        entityManager ! EntityManager.GetSum("9013")
-        entityManager ! EntityManager.GetSum("9016")
+        entityManager ! VertexEntityManager.Initialize("5_0")
+        entityManager ! VertexEntityManager.Initialize("6_1")
+        entityManager ! VertexEntityManager.Initialize("7_2")
+        entityManager ! VertexEntityManager.Initialize("8_1")
+        
+        entityManager ! VertexEntityManager.AddOne("5_0")
+        entityManager ! VertexEntityManager.AddOne("6_1")
+        entityManager ! VertexEntityManager.AddOne("7_2")
+        entityManager ! VertexEntityManager.AddOne("5_0")
+        entityManager ! VertexEntityManager.AddOne("6_1")
+        entityManager ! VertexEntityManager.AddOne("7_2")
+        entityManager ! VertexEntityManager.GetSum("5_0")
+        entityManager ! VertexEntityManager.GetSum("6_1")
+        entityManager ! VertexEntityManager.GetSum("7_2")
+        entityManager ! VertexEntityManager.GetSum("8_1")
       }
     }
   }
