@@ -93,4 +93,32 @@ class SequentialTest extends FunSuite with Matchers {
     val results = SequentialRun(SSSP, g)(states, activeMap)
     results should be (distances)
   }
+
+  test("Local Maxima Colouring") {
+    val g: Graph[Int, WDiEdge] = Graph(
+      1~>2 % 1,
+      1~>3 % 1,
+      2~>1 % 1,
+      2~>3 % 1,
+      2~>4 % 1,
+      3~>1 % 1,
+      3~>2 % 1,
+      3~>4 % 1,
+      3~>5 % 1,
+      4~>2 % 1,
+      4~>3 % 1,
+      5~>3 % 1,
+    )
+    val states: Map[g.NodeT, Option[Colour]] = g.nodes.map(v => (v, None)).toMap
+    val activeMap = g.nodes.map(v => (v, true)).toMap
+    val finalColours = ListMap(
+      g.Node(1) -> Some(Colour(3)),
+      g.Node(2) -> Some(Colour(2)),
+      g.Node(3) -> Some(Colour(1)),
+      g.Node(4) -> Some(Colour(0)),
+      g.Node(5) -> Some(Colour(0)),
+    )
+    val results = SequentialRun(LocalMaximaColouring, g)(states, activeMap)
+    results should be (finalColours)
+  }
 }
