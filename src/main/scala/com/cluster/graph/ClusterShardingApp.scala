@@ -83,59 +83,30 @@ object ClusterShardingApp {
     val png = initGraphPartitioning()
     if (role == "domainListener") {
       // enable ClusterMemberEventListener for logging purposes
-       ActorSystem(ClusterMemberEventListener(nodesUp), "ClusterSystem", config)
+      ActorSystem(ClusterMemberEventListener(nodesUp), "ClusterSystem", config)
     }
     else {
-      val entityManager = 
+      val entityManager =
         ActorSystem[VertexEntityManager.Command](
           VertexEntityManager(partitionMap, png.mainArray),
           "ClusterSystem", config
         )
 
       if (role == "front") {
+        // init mains and mirrors
+        for (main <- png.mainArray) entityManager ! VertexEntityManager.Initialize(main.eid)
 
-        // iterate through mains and mirrors
-        for (main <- png.mainArray) {
-          // create main
-          val mainVid: String = s"${main.id}_${main.partition.id}"
-          entityManager ! VertexEntityManager.Initialize(mainVid)
-          for (mirror <- main.mirrors) {
-            // create mirror
-            val mirrorVid: String = s"${mirror.id}_${mirror.partition.id}"
-            entityManager ! VertexEntityManager.Initialize(mirrorVid)
-          }
-        }
+        // increment mains and their mirrors
+        for (main <- png.mainArray) entityManager ! VertexEntityManager.AddOne(main.eid)
+        for (main <- png.mainArray) entityManager ! VertexEntityManager.AddOne(main.eid)
 
-        // mains, mirrors initialize; add references of mirrors to mains
+        // see if increments have been propagated correctly to mirrors
         for (main <- png.mainArray) {
-          // create main
-          entityManager ! VertexEntityManager.AddOne(main.eid)
-        }
-
-        for (main <- png.mainArray) {
-          // create main
           entityManager ! VertexEntityManager.GetSum(main.eid)
           for (mirror <- main.mirrors) {
-            // create mirror
             entityManager ! VertexEntityManager.GetSum(mirror.eid)
           }
         }
-
-//        entityManager ! VertexEntityManager.Initialize("5_0")
-//        entityManager ! VertexEntityManager.Initialize("6_1")
-//        entityManager ! VertexEntityManager.Initialize("7_2")
-//        entityManager ! VertexEntityManager.Initialize("8_1")
-//
-//        entityManager ! VertexEntityManager.AddOne("5_0")
-//        entityManager ! VertexEntityManager.AddOne("6_1")
-//        entityManager ! VertexEntityManager.AddOne("7_2")
-//        entityManager ! VertexEntityManager.AddOne("5_0")
-//        entityManager ! VertexEntityManager.AddOne("6_1")
-//        entityManager ! VertexEntityManager.AddOne("7_2")
-//        entityManager ! VertexEntityManager.GetSum("5_0")
-//        entityManager ! VertexEntityManager.GetSum("6_1")
-//        entityManager ! VertexEntityManager.GetSum("7_2")
-//        entityManager ! VertexEntityManager.GetSum("8_1")
       }
     }
   }
