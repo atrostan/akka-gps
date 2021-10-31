@@ -65,6 +65,7 @@ The edgeList.Compressor will produce
     var outfile = ""
     var sep = ""
 
+    // TODO; add an additional argument and functionality to handle weighted graphs
     args.sliding(2, 2).toList.collect {
       case Array("--nNodes", argNNodes: String) => nNodes = argNNodes.toInt
       case Array("--nEdges", argNEdges: String) => nEdges = argNEdges.toInt
@@ -156,18 +157,6 @@ The edgeList.Compressor will produce
 
     }
 
-    class VertexID(i: String) {
-      val id: String = i
-      println(id)
-      override def hashCode(): Int = {
-        println(id)
-        id.split("\\.")(1).toInt
-      }
-    }
-
-    val vid = new VertexID("9.1")
-    println(vid)
-    println(vid.hashCode())
     println("stopping spark context...")
     // TODO; Figure out: Cleaner thread interrupted, will stop
     // java.lang.InterruptedException
