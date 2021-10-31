@@ -97,23 +97,7 @@ The edgeList.Compressor will produce
           (split(0).toInt, split(1).toInt)
         })
 
-      var nUniqueVertices = 0
-//      var uniqueVertexSet = collection.mutable.Set[Int]()
-//      edgeList.collect().foreach(edge => {
-//        if (!uniqueVertexSet.contains(edge._1)) {
-//          uniqueVertexSet.add(edge._1)
-//          nUniqueVertices += 1
-//        }
-//        if (!uniqueVertexSet.contains(edge._2)) {
-//          uniqueVertexSet.add(edge._2)
-//          nUniqueVertices += 1
-//        }
-//      })
-//      println(s"total unique vertices seen: $nUniqueVertices")
-//
-//      println("distinct before: ", edgeList.distinct().count())
 
-//      val selfEdges = edgeList.filter(edge => edge._1 == edge._2).collect()
       edgeList
       // for some reason, issues with performing the deduplication at this stage
       //        .filter(edge => edge._1 != edge._2)
