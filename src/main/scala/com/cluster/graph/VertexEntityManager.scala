@@ -9,8 +9,10 @@ import akka.actor.typed.scaladsl.Behaviors
 import akka.cluster.sharding.typed.ShardingMessageExtractor
 import akka.cluster.sharding.typed.ShardingEnvelope
 import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityRef}
+import com.preprocessing.partitioning.oneDim.Main
 
 import java.io.{File, FileOutputStream}
+import scala.collection.mutable.ArrayBuffer
 
 // EntityManager actor
 // in charge of both:
@@ -30,13 +32,18 @@ object VertexEntityManager {
 
   case class Received(i: Int) extends Command
 
-  def apply(partitionMap: collection.mutable.Map[Int, Int]): Behavior[Command] = Behaviors.setup { ctx =>
+  def apply(partitionMap: collection.mutable.Map[Int, Int], mainArray: Array[Main]): Behavior[Command] = Behaviors.setup { ctx =>
     val myShardAllocationStrategy = new MyShardAllocationStrategy(partitionMap)
     val cluster = Cluster(ctx.system)
     val sharding = ClusterSharding(ctx.system)
 
     val numberOfShards = ConfigFactory.load("cluster")
     val messageExtractor = new VertexIdExtractor[Vertex.Command](numberOfShards.getInt("akka.cluster.sharding.number-of-shards"))
+
+    println("partitionMap in VertexEntityManager: ", partitionMap)
+    println("main array in  ")
+    mainArray.foreach(println)
+    println("address: ", cluster.selfMember.address.toString)
 
     val entityType = Entity(Vertex.TypeKey) { entityContext =>
       Vertex(cluster.selfMember.address.toString, entityContext)
@@ -52,7 +59,26 @@ object VertexEntityManager {
 
     val counterRef: ActorRef[Vertex.Response] = ctx.messageAdapter(ref => WrappedTotal(ref))
 
+    def isMain(eid: String): Boolean = {
+      val split = eid.split('_').map(_.toInt)
+      split(0) % partitionMap.size == split(1)
+    }
+
     Behaviors.receiveMessage[Command] {
+      case Initialize(cid) =>
+        val entityRef: EntityRef[Vertex.Command] = sharding.entityRefFor(Vertex.TypeKey, cid)
+
+        println(s"in init for ${cid}: isMain? ${isMain(cid)} ")
+        if (isMain(cid)) {
+          val vid = cid.split("_")(0).toInt
+          val mirrors = mainArray(vid).mirrors
+          mirrors.map(m => m.eid)
+          entityRef ! Vertex.Initialize(mirrors.map(m => m.eid).toList)
+        }
+        entityRef ! Vertex.Initialize(List())
+
+        Behaviors.same
+
       case AddOne(cid) =>
         val entityRef: EntityRef[Vertex.Command] = sharding.entityRefFor(Vertex.TypeKey, cid)
         entityRef ! Vertex.Increment

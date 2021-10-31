@@ -7,6 +7,7 @@ trait Actor {
   //TODO; entityRef's custom .hashCode() should map to the correct shard?
   var entityRef: Int = -1
   val partition: Partition
+  def eid: String = s"${id}_${partition.id}"
 }
 
 // main actor

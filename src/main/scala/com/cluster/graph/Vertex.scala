@@ -4,8 +4,11 @@ import scala.concurrent.duration._
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
 import akka.cluster.sharding.typed.internal.EntityTypeKeyImpl
-import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityContext, EntityTypeKey}
+import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityContext, EntityRef, EntityTypeKey}
 import com.CborSerializable
+import com.cluster.graph.VertexEntityManager.WrappedTotal
+
+import scala.collection.mutable.ArrayBuffer
 
 // final class IdString extends String {
 //   override def hashCode(): Int = {
@@ -51,9 +54,11 @@ import com.CborSerializable
 object Vertex {
   sealed trait Command extends CborSerializable
 
-  final case class Initialize() extends Command
+  final case class Initialize(mrrs: List[String]) extends Command
 
   case object Increment extends Command
+
+  case object Initialize extends Command
 
   final case class GetValue(replyTo: ActorRef[Response]) extends Command
 
@@ -67,17 +72,41 @@ object Vertex {
 
   val TypeKey = EntityTypeKey[Vertex.Command]("Vertex")
 
+  var i = 0;
+
+  var mirrors = ArrayBuffer[String]()
+
   def apply(
              nodeAddress: String,
              entityContext: EntityContext[Command],
            ): Behavior[Command] = {
 
     Behaviors.setup { ctx =>
+      val sharding = ClusterSharding(ctx.system)
+
+      i = nodeAddress.length
 
       def updated(value: Int): Behavior[Command] = {
         Behaviors.receiveMessage[Command] {
+          case Initialize(mrrs: List[String]) =>
+            ctx.log.info("******************{} init at {},{}", ctx.self.path, nodeAddress, entityContext.entityId)
+
+            mrrs match {
+              case ms => mrrs.foreach(mrr => { mirrors += mrr} )
+              case Nil => mirrors
+            }
+
+            Behaviors.same
           case Increment =>
             ctx.log.info("******************{} counting at {},{}", ctx.self.path, nodeAddress, entityContext.entityId)
+            println("called increment, arre my mirrors updated?")
+            mirrors.foreach(mirror => {
+              println(mirror)
+              val entityRef: EntityRef[Vertex.Command] = sharding.entityRefFor(Vertex.TypeKey, mirror)
+              val counterRef: ActorRef[Vertex.Response] = ctx.messageAdapter(ref => WrappedTotal(ref))
+
+              entityRef ! Vertex.GetValue(counterRef)
+            })
             updated(value + 1)
           case GetValue(replyTo) =>
             ctx.log.info("******************{} get value at {},{}", ctx.self.path, nodeAddress, entityContext.entityId)
