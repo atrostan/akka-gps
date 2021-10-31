@@ -1,5 +1,7 @@
 package com.preprocessing.partitioning.oneDim
 
+import com.graph.{Edge, Vertex}
+
 import scala.collection.mutable.ArrayBuffer
 
 class Partitioning(P: Int, n: Int, m: Int) {
@@ -47,13 +49,13 @@ class Partitioning(P: Int, n: Int, m: Int) {
   def assign(e: Edge): Unit = {
     val src: Vertex = e.source
     val partitionToAssign: Int = src.id % nPartitions
-    this.get(partitionToAssign).edges.addOne(e)
+    this.get(partitionToAssign).edges += e
   }
 
   // set up an empty edge list container per partition
   def init(): Unit = {
     for (pid <- 0 until nPartitions) {
-      partitions.addOne(Partition(pid))
+      partitions += Partition(pid)
     }
   }
 
@@ -66,11 +68,11 @@ class Partitioning(P: Int, n: Int, m: Int) {
 
         if (getMainPartition(dest) == partition) { // dest is a main in this partition
           val destRef: Main = mainArray(dest.id)
-          srcMain.neighbors.addOne(destRef)
+          srcMain.neighbors += destRef
         } else { // dest is a mirror in this partition
           if (partition.mirrorMap.isDefinedAt(dest.id)) { // already created a mirror for dest in this partition
             val destRef: Mirror = partition.mirrorMap.get(dest.id).get
-            srcMain.neighbors.addOne(destRef)
+            srcMain.neighbors += destRef
           } else { // need to create a mirror for dest in this partition
             // get the main reference for this mirror
             val destMain: Main = mainArray(dest.id)
@@ -79,9 +81,9 @@ class Partitioning(P: Int, n: Int, m: Int) {
               destMain, // mirror -> main hook
               partition
             )
-            destMain.mirrors.addOne(destRef) // main -> mirror hook
-            partition.mirrorMap.addOne((dest.id, destRef))
-            srcMain.neighbors.addOne(destRef)
+            destMain.mirrors += destRef // main -> mirror hook
+            partition.mirrorMap += (dest.id -> destRef)
+            srcMain.neighbors += destRef
           }
         }
       }
