@@ -9,9 +9,9 @@ import scala.collection.mutable.ArrayBuffer
 import akka.cluster.sharding.typed.scaladsl.EntityRef
 
 
-// counter actor
-// TODO modify this to encapsulate actions and state for Vertex Actors (both mains, mirrors?)
-object Vertex {
+// Vertex actor
+// TODO modify or split this to encapsulate actions and state for Main and Mirror vertices
+object VertexEntity {
   sealed trait Command extends CborSerializable
 
   final case class Initialize(vertexId: Int, partitionId: Int, neighbors: ArrayBuffer[EntityId], mirrors: ArrayBuffer[EntityId]) extends Command
@@ -32,7 +32,7 @@ object Vertex {
 
   case class SubTtl(entityId: String, ttl: Int) extends Response
 
-  val TypeKey: EntityTypeKey[Vertex.Command] = EntityTypeKey[Vertex.Command]("Vertex")
+  val TypeKey: EntityTypeKey[VertexEntity.Command] = EntityTypeKey[VertexEntity.Command]("VertexEntity")
 
   def apply(
              nodeAddress: String,
@@ -75,7 +75,7 @@ object Vertex {
             replyTo ! SubTtl(entityContext.entityId, value)
             Behaviors.same
           case EchoValue =>
-            ctx.log.info("******************{} echo value {} at {},{}", ctx.self.path, value, nodeAddress, entityContext.entityId)
+            ctx.log.info("******************{} echo value at {},{}", ctx.self.path, nodeAddress, entityContext.entityId)
             Behaviors.same
           case Idle =>
             entityContext.shard ! ClusterSharding.Passivate(ctx.self)

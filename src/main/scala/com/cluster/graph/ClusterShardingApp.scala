@@ -2,7 +2,8 @@ package com.cluster.graph
 
 import akka.actor.typed._
 import akka.cluster.Member
-import com.preprocessing.partitioning.oneDim.{Edge, Partitioning, Vertex}
+import com.graph.{Edge, Vertex}
+import com.preprocessing.partitioning.oneDim.Partitioning
 import com.typesafe.config.ConfigFactory
 import scala.collection.mutable.ArrayBuffer
 
@@ -20,6 +21,7 @@ object ClusterShardingApp {
   //
   //  val myPMap: PartitionMap = collection.mutable.Map[Int,Int]()
 
+  // Sample graph for partitioning and akka population test
   def initGraphPartitioning(): Partitioning = {
     val edges = ArrayBuffer[Edge]()
     val nPartitions: Int = 4
@@ -43,8 +45,8 @@ object ClusterShardingApp {
     val e8 = Edge(v0, v4)
     val e9 = Edge(v4, v0)
 
-    val es = Seq(e0, e1, e2, e3, e4, e5, e6, e7, e8, e9)
-    edges.addAll(es)
+    val es = ArrayBuffer(e0, e1, e2, e3, e4, e5, e6, e7, e8, e9)
+    edges ++= es
     // create partitioning data structure
     val png = Partitioning(nPartitions, edges, nNodes, nEdges)
     png
