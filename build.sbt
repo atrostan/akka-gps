@@ -45,6 +45,7 @@ lazy val `akka-gps` = project
       "com.typesafe.akka" %% "akka-persistence-testkit"    % akkaVersion % Test,
       "org.apache.spark" %% "spark-core" % sparkVersion,
       "org.apache.spark" %% "spark-streaming" % sparkVersion,
+      "org.scala-graph" %% "graph-core" % "1.12.5"
     ),
     run / fork := false,
     Global / cancelable := false,
