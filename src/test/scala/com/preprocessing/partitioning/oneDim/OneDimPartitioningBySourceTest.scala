@@ -35,7 +35,6 @@ class OneDimPartitioningBySourceTest extends FunSuite with Matchers {
   edges ++= es
   val png = Partitioning(nPartitions, edges, nNodes, nEdges)
 
-
   test("Correct assignment of Mains") {
     // an assignment from vertex id to partition id that stores main copy
     val mainMap = png.mainArray.map(m => (m.id, m.partition.id))
