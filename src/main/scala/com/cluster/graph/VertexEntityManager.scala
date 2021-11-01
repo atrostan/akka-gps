@@ -8,6 +8,7 @@ import akka.cluster.sharding.typed.ShardingMessageExtractor
 import akka.cluster.sharding.typed.ShardingEnvelope
 import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityRef}
 import com.preprocessing.partitioning.oneDim.Main
+import scala.collection.mutable.ArrayBuffer
 
 // EntityManager actor
 // in charge of both:
@@ -17,11 +18,11 @@ object VertexEntityManager {
 
   sealed trait Command
 
-  case class Initialize(vertexId: String) extends Command
+  case class Initialize(vertexId: Int, partitionId: Int, neighbors: ArrayBuffer[EntityId]) extends Command
 
-  case class AddOne(vertexId: String) extends Command
+  case class AddOne(vertexId: Int, partitionId: Int) extends Command
 
-  case class GetSum(counterId: String) extends Command
+  case class GetSum(vertexId: Int, partitionId: Int) extends Command
 
   case class WrappedTotal(res: Vertex.Response) extends Command
 
@@ -49,41 +50,52 @@ object VertexEntityManager {
     val shardRegion = sharding.init(entityType)
     val counterRef: ActorRef[Vertex.Response] = ctx.messageAdapter(ref => WrappedTotal(ref))
 
-    def isMain(eid: String): Boolean = {
-      val split = eid.split('_').map(_.toInt)
-      split(0) % partitionMap.size == split(1)
+    def isMain(eid: EntityId): Boolean = {
+      eid.vertexId % partitionMap.size == eid.partitionId
     }
 
-    // get the vertex id from the entity id
-    def getVid(eid: String): Int = {
-      eid.split("_")(0).toInt
+    // Initialize vertex. If the vertex is a main, tell the command to all its mirrors.
+    def initMainAndMirrors(eid: EntityId, neighbors: ArrayBuffer[EntityId]): Unit = {
+      val entityRef: EntityRef[Vertex.Command] = sharding.entityRefFor(Vertex.TypeKey, eid.toString)
+      // initialize all mirrors of main // TODO Review main check is needed anymore
+      if (isMain(eid)) {
+        val mirrors = mainArray(eid.vertexId).mirrors.map(m => new EntityId(m.id, m.partition.id))
+        entityRef ! Vertex.Initialize(eid.vertexId, eid.partitionId, neighbors, mirrors)
+        // val mirrorEntityRefs = mirrors.map(mid => sharding.entityRefFor(Vertex.TypeKey, mid.toString))
+        for (m <- mirrors) {
+          val eRef = sharding.entityRefFor(Vertex.TypeKey, m.toString)
+          eRef ! Vertex.InitializeMirror(m.vertexId, m.partitionId, eid)
+        }
+      }
     }
 
-    // Tell a vertex command to a vertex.
+    // Tell non-parameter vertex command to a vertex.
     // If the vertex is a main, tell the command to all its mirrors.
-    def tellMainAndMirrors(cmd: Vertex.Command, eid: String): Unit = {
-      val entityRef: EntityRef[Vertex.Command] = sharding.entityRefFor(Vertex.TypeKey, eid)
+    def tellMainAndMirrors(cmd: Vertex.Command, eid: EntityId): Unit = {
+      val entityRef: EntityRef[Vertex.Command] = sharding.entityRefFor(Vertex.TypeKey, eid.toString)
       entityRef ! cmd
       // initialize all mirrors of main
       if (isMain(eid)) {
-        val vid = getVid(eid)
-        val mirrors = mainArray(vid).mirrors.map(m => m.eid)
-        val mirrorEntityRefs = mirrors.map(mid => sharding.entityRefFor(Vertex.TypeKey, mid))
+        val mirrors = mainArray(eid.vertexId).mirrors.map(m => new EntityId(m.id, m.partition.id))
+        val mirrorEntityRefs = mirrors.map(mid => sharding.entityRefFor(Vertex.TypeKey, mid.toString))
         for (eRef <- mirrorEntityRefs) eRef ! cmd
       }
     }
 
     Behaviors.receiveMessage[Command] {
-      case Initialize(eid) =>
-        tellMainAndMirrors(Vertex.Initialize, eid)
+      case Initialize(vid, pid, neighbors) =>
+        val eid = new EntityId(vid, pid)
+        initMainAndMirrors(eid, neighbors)
         Behaviors.same
-
-      case AddOne(eid) =>
+        
+      case AddOne(vid, pid) =>
+        val eid = new EntityId(vid, pid)
         tellMainAndMirrors(Vertex.Increment, eid)
         Behaviors.same
 
-      case GetSum(eid) =>
-        val entityRef: EntityRef[Vertex.Command] = sharding.entityRefFor(Vertex.TypeKey, eid)
+      case GetSum(vid, pid) =>
+        val eid = new EntityId(vid, pid)
+        val entityRef: EntityRef[Vertex.Command] = sharding.entityRefFor(Vertex.TypeKey, eid.toString)
         entityRef ! Vertex.GetValue(counterRef)
         Behaviors.same
 
@@ -139,3 +151,10 @@ object VertexIdExtractor {
 // final case class VertexShardingEnvelope[M](entityId: String, message: M) extends WrappedMessage {
 //   if (message == null) throw InvalidMessageException("[null] is not an allowed message")
 // }
+
+// TODO Put in appropriate place
+final class EntityId(vid: Int, pid: Int) {
+  val vertexId = vid
+  val partitionId = pid
+  override def toString(): String = s"${vertexId}_${partitionId}"
+}

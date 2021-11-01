@@ -4,6 +4,7 @@ import akka.actor.typed._
 import akka.cluster.Member
 import com.preprocessing.partitioning.oneDim.{Edge, Partitioning, Vertex}
 import com.typesafe.config.ConfigFactory
+import scala.collection.mutable.ArrayBuffer
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -81,11 +82,11 @@ object ClusterShardingApp {
 
     var nodesUp = collection.mutable.Set[Member]()
     val png = initGraphPartitioning()
+
     if (role == "domainListener") {
       // enable ClusterMemberEventListener for logging purposes
       ActorSystem(ClusterMemberEventListener(nodesUp), "ClusterSystem", config)
-    }
-    else {
+    } else {
       val entityManager =
         ActorSystem[VertexEntityManager.Command](
           VertexEntityManager(partitionMap, png.mainArray),
@@ -94,17 +95,19 @@ object ClusterShardingApp {
 
       if (role == "front") {
         // init mains and mirrors
-        for (main <- png.mainArray) entityManager ! VertexEntityManager.Initialize(main.eid)
+        // TODO Decide on whether to put here or elsewhere, the conversion of neighbour Actor to a simple string/EntityId form. Maybe entityIds should be constructed here?
+        // TODO Decide whether to pass Partition object or just id.
+        for (main <- png.mainArray) entityManager ! VertexEntityManager.Initialize(main.id, main.partition.id, main.neighbors.map(n => new EntityId(n.id, n.partition.id)))
 
         // increment mains and their mirrors
-        for (main <- png.mainArray) entityManager ! VertexEntityManager.AddOne(main.eid)
-        for (main <- png.mainArray) entityManager ! VertexEntityManager.AddOne(main.eid)
+        for (main <- png.mainArray) entityManager ! VertexEntityManager.AddOne(main.id, main.partition.id)
+        for (main <- png.mainArray) entityManager ! VertexEntityManager.AddOne(main.id, main.partition.id)
 
         // see if increments have been propagated correctly to mirrors
         for (main <- png.mainArray) {
-          entityManager ! VertexEntityManager.GetSum(main.eid)
+          entityManager ! VertexEntityManager.GetSum(main.id, main.partition.id)
           for (mirror <- main.mirrors) {
-            entityManager ! VertexEntityManager.GetSum(mirror.eid)
+            entityManager ! VertexEntityManager.GetSum(mirror.id, mirror.partition.id)
           }
         }
       }

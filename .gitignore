@@ -4,12 +4,6 @@ target/
 .project
 .classpath
 
-.idea
-*.iml
-
-.metals
-.bloop
-
 #
 # Are you tempted to edit this file?
 #
@@ -40,21 +34,24 @@ target/
 # target directory for build
 /build/
 
-# other
-/out/
-/bin/
-/sandbox/
-
 # intellij
-/src/intellij*/*.iml
-/src/intellij*/*.ipr
-/src/intellij*/*.iws
+*.iml
+*.ipr
+*.iws
+.idea
+out
 **/.cache
-/.idea
 /.settings
 
 # vscode
 /.vscode
+
+# Mac
+.DS_Store
+
+### Scala ###
+*.class
+*.log
 
 # Standard symbolic link to build/quick/bin
 /qbin
@@ -77,5 +74,14 @@ jitwatch.out
 .metals
 .bloop
 project/**/metals.sbt
+.bsp
+
+# jenv
+.java-version
+
+# other
+/out/
+/bin/
+/sandbox/
 /logs/*
 tmp
