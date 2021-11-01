@@ -1,4 +1,4 @@
-package com.preprocessing.partitioning.oneDim
+package com.graph
 
 class Edge(u: Vertex, v: Vertex) {
   var id: Int = -1 // needed?

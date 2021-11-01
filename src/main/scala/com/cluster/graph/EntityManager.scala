@@ -5,8 +5,6 @@ import akka.actor.typed.scaladsl.Behaviors
 import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityRef}
 import akka.cluster.typed.Cluster
 
-import java.io.{File, FileOutputStream}
-
 // EntityManager actor
 // in charge of both:
 // (1) front end actions (incrementing counters),

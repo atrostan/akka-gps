@@ -1,36 +1,50 @@
 import com.typesafe.sbt.SbtMultiJvm.multiJvmSettings
 import com.typesafe.sbt.SbtMultiJvm.MultiJvmKeys.MultiJvm
 
-name := "akka-quickstart-scala"
+name := "akka-gps"
 
 version := "1.0"
 
 lazy val akkaVersion = "2.6.16"
+lazy val sparkVersion = "3.1.2"
+
+ThisBuild / assemblyMergeStrategy := {
+  case PathList("javax", "servlet", xs @ _*)         => MergeStrategy.first
+  case PathList(ps @ _*) if ps.last endsWith ".html" => MergeStrategy.first
+  case PathList("org", "apache", "spark", "unused", "UnusedStubClass.class")         => MergeStrategy.first
+  case "application.conf"                            => MergeStrategy.concat
+  case "unwanted.txt"                                => MergeStrategy.discard
+  case PathList("org", "apache", "hadoop", "yarn", "factories", "package-info.class")         => MergeStrategy.discard
+  case PathList("org", "apache", "hadoop", "yarn", "provider", "package-info.class")         => MergeStrategy.discard
+  case PathList("org", "apache", "hadoop", "util", "provider", "package-info.class")         => MergeStrategy.discard
+  case PathList("org", "apache", "spark", "unused", "UnusedStubClass.class")         => MergeStrategy.first
+  case PathList("org", "aopalliance", "intercept", "MethodInvocation.class") => MergeStrategy.first
+  case x =>
+    val oldStrategy = (ThisBuild / assemblyMergeStrategy).value
+    oldStrategy(x)
+}
 
 lazy val `akka-gps` = project
   .in(file("."))
   .settings(multiJvmSettings: _*)
   .settings(
 //    organization := "com.lightbend.akka.samples",
-    scalaVersion := "2.13.1",
-    Compile / scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-Xlog-reflective-calls", "-Xlint"),
+    scalaVersion := "2.12.15",
+    Compile / scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-Xlog-reflective-calls", "-Xlint", "-target:jvm-1.8"),
     Compile / javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation"),
-    run / javaOptions ++= Seq("-Xms128m", "-Xmx1024m", "-Djava.library.path=./target/native"),
+    run / javaOptions ++= Seq("-Xms128m", "-Xmx8G", "-XX:+UseG1GC", "-Djava.library.path=./target/native",  "-Dlog4j.configuration=src/main/resources/log4j.properties"),
     libraryDependencies ++= Seq(
       "com.typesafe.akka" %% "akka-actor-typed"            % akkaVersion,
       "com.typesafe.akka" %% "akka-cluster-typed"          % akkaVersion,
       "com.typesafe.akka" %% "akka-serialization-jackson"  % akkaVersion,
       "com.typesafe.akka" %% "akka-cluster-sharding-typed" % akkaVersion,
-      "ch.qos.logback"    %  "logback-classic"             % "1.2.3",
       "com.typesafe.akka" %% "akka-multi-node-testkit"     % akkaVersion % Test,
       "org.scalatest"     %% "scalatest"                   % "3.0.8"     % Test,
       "com.typesafe.akka" %% "akka-actor-testkit-typed"    % akkaVersion % Test,
-      "org.scala-graph"   %% "graph-core"                  % "1.13.3",
       "com.typesafe.akka" %% "akka-persistence-typed"      % akkaVersion,
       "com.typesafe.akka" %% "akka-persistence-testkit"    % akkaVersion % Test,
-      "org.slf4j" % "slf4j-api" % "1.7.32",
-      "org.slf4j" % "slf4j-simple" % "1.7.32",
-      "org.clapper" %% "grizzled-slf4j" % "1.3.4",
+      "org.apache.spark" %% "spark-core" % sparkVersion,
+      "org.apache.spark" %% "spark-streaming" % sparkVersion,
     ),
     run / fork := false,
     Global / cancelable := false,

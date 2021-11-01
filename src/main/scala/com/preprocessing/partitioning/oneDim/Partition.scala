@@ -1,5 +1,7 @@
 package com.preprocessing.partitioning.oneDim
 
+import com.graph.Edge
+
 import scala.collection.mutable.ArrayBuffer
 
 class Partition(pid: Int){
@@ -14,16 +16,16 @@ class Partition(pid: Int){
   }
 
   val id: Int = pid
-  var edges = ArrayBuffer[Edge]() // the subgraph in this partition
+  var edges: ArrayBuffer[Edge] = ArrayBuffer[Edge]() // the subgraph in this partition
   var mirrorMap = MirrorMap()
 
   def add(e: Edge): Unit = {
-    edges.addOne(e)
+    edges += e
   }
 
   override def toString(): String = {
     var s: String = ""
-    s += s"Partition ${id}"
+    s += s"Partition $id"
     s
   }
 }
