@@ -14,9 +14,13 @@ object SequentialRun {
     var vertices = graph.nodes
     var states = initialStates
     var activeMap = initialActiveMap
-    val emptyMailboxes: Map[Vertex, Map[WDiEdge[Vertex], MessageT]] = vertices.map(vtx => (vtx, Map.empty[WDiEdge[Vertex], MessageT])).toMap
-    var currentMailboxes: Map[Vertex, Map[WDiEdge[Vertex], MessageT]] = emptyMailboxes
-    var nextMailboxes: Map[Vertex, Map[WDiEdge[Vertex], MessageT]] = emptyMailboxes
+
+    type Mailbox = Map[WDiEdge[Vertex], MessageT]
+
+    val emptyMailbox: Mailbox = Map.empty
+    val emptyMailboxes: Map[Vertex, Mailbox] = vertices.map(vtx => (vtx, emptyMailbox)).toMap
+    var currentMailboxes: Map[Vertex, Mailbox] = emptyMailboxes
+    var nextMailboxes: Map[Vertex, Mailbox] = emptyMailboxes
     var superstep = -1
 
     // println("Vertices: " + vertices)
