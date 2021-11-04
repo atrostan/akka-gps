@@ -18,6 +18,8 @@ runMain com.preprocessing.edgeList.Compressor --nNodes 5 --nEdges 7 --inputFilen
 
 runMain com.preprocessing.edgeList.Compressor --nNodes 1005 --nEdges 25571 --inputFilename "src/main/resources/graphs/email-Eu-core/orig.net" --outputFilename "src/main/resources/graphs/email-Eu-core/reset" --sep " "
 
+runMain com.preprocessing.partitioning.Driver --nNodes 1005 --nEdges 24929 --inputFilename "src/main/resources/graphs/email-Eu-core/reset/part-00000" --outputFilename "src/main/resources/graphs/email-Eu-core/tmp/" --sep " " --threshold 100
+
 Sort an input edge list by ascending source id. For each source id, the destination ids are also sorted in
 ascending order.
 Self directed edges are removed.

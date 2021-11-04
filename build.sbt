@@ -19,6 +19,7 @@ ThisBuild / assemblyMergeStrategy := {
   case PathList("org", "apache", "hadoop", "util", "provider", "package-info.class")         => MergeStrategy.discard
   case PathList("org", "apache", "spark", "unused", "UnusedStubClass.class")         => MergeStrategy.first
   case PathList("org", "aopalliance", "intercept", "MethodInvocation.class") => MergeStrategy.first
+  case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
   case x =>
     val oldStrategy = (ThisBuild / assemblyMergeStrategy).value
     oldStrategy(x)
