@@ -6,8 +6,7 @@ import com.graph.{Edge, Vertex}
 import com.preprocessing.partitioning.oneDim.Partitioning
 import com.typesafe.config.ConfigFactory
 import scala.collection.mutable.ArrayBuffer
-
-import scala.collection.mutable.ArrayBuffer
+import com.cluster.graph.entity.{EntityId, MainEntity, MirrorEntity}
 
 object ClusterShardingApp {
 
@@ -90,26 +89,27 @@ object ClusterShardingApp {
       ActorSystem(ClusterMemberEventListener(nodesUp), "ClusterSystem", config)
     } else {
       val entityManager =
-        ActorSystem[VertexEntityManager.Command](
-          VertexEntityManager(partitionMap, png.mainArray),
+        ActorSystem[EntityManager.Command](
+          EntityManager(partitionMap, png.mainArray),
           "ClusterSystem", config
         )
 
       if (role == "front") {
         // init mains and mirrors
-        // TODO Decide on whether to put here or elsewhere, the conversion of neighbour Actor to a simple string/EntityId form. Maybe entityIds should be constructed here?
         // TODO Decide whether to pass Partition object or just id.
-        for (main <- png.mainArray) entityManager ! VertexEntityManager.Initialize(main.id, main.partition.id, main.neighbors.map(n => new EntityId(n.id, n.partition.id)))
+        // TODO Decide on whether to put here or elsewhere, the conversion of neighbour Actor to a simple string/EntityId form. Maybe entityIds should be constructed here?
+        // TODO Need to distinguish if neighbor is main or mirror. For passes along info to EntityManager 
+        for (main <- png.mainArray) entityManager ! EntityManager.Initialize(MainEntity.getClass.toString(), main.id, main.partition.id, main.neighbors.map(n => new EntityId(MainEntity.getClass.toString(), n.id, n.partition.id)))
 
         // increment mains and their mirrors
-        for (main <- png.mainArray) entityManager ! VertexEntityManager.AddOne(main.id, main.partition.id)
-        for (main <- png.mainArray) entityManager ! VertexEntityManager.AddOne(main.id, main.partition.id)
+        for (main <- png.mainArray) entityManager ! EntityManager.AddOne(MainEntity.getClass.toString(), main.id, main.partition.id)
+        for (main <- png.mainArray) entityManager ! EntityManager.AddOne(MainEntity.getClass.toString(), main.id, main.partition.id)
 
         // see if increments have been propagated correctly to mirrors
         for (main <- png.mainArray) {
-          entityManager ! VertexEntityManager.GetSum(main.id, main.partition.id)
+          entityManager ! EntityManager.GetSum(MainEntity.getClass.toString(), main.id, main.partition.id)
           for (mirror <- main.mirrors) {
-            entityManager ! VertexEntityManager.GetSum(mirror.id, mirror.partition.id)
+            entityManager ! EntityManager.GetSum(MirrorEntity.getClass.toString(), mirror.id, mirror.partition.id)
           }
         }
       }
