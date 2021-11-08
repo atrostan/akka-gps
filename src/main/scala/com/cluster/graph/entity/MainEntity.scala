@@ -58,6 +58,14 @@ class MainEntity(
         ctxLog("Beginning compute")
         value += 1
         Behaviors.same
+      case NeighbourMessage(stepNum, msg) =>
+        ctxLog("Received neighbour msg " + msg)
+        // TODO Implement
+        Behaviors.same
+      case MirrorTotal(stepNum, total) =>
+        ctxLog("Received mirror total " + total)
+        // TODO Implement
+        Behaviors.same
 
       case VertexEntity.Idle =>
         entityContext.shard ! ClusterSharding.Passivate(ctx.self)
@@ -97,8 +105,8 @@ object MainEntity {
   ) extends VertexEntity.Command
 
   // GAS
-  final case class MirrorTotal(stepNum: Int, total: Int) extends VertexEntity.Command
   final case class NeighbourMessage(stepNum: Int, msg: String) extends VertexEntity.Command
+  final case class MirrorTotal(stepNum: Int, total: Int) extends VertexEntity.Command
 
   def apply(
       nodeAddress: String,

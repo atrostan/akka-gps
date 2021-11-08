@@ -51,10 +51,19 @@ class MirrorEntity(
         main = m
         Behaviors.same
 
+      // GAS Actions
       case VertexEntity.Begin =>
         ctxLog("Beginning compute")
         value += 1
         Behaviors.same
+        case NeighbourMessage(stepNum, msg) =>
+          ctxLog("Received neighbour msg " + msg)
+          // TODO Implement
+          Behaviors.same
+        case ApplyResult(stepNum, total) =>
+          ctxLog("Received mirror total " + total)
+          // TODO Implement
+          Behaviors.same
 
       case VertexEntity.Idle =>
         entityContext.shard ! ClusterSharding.Passivate(ctx.self)
