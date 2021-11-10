@@ -1,16 +1,13 @@
 package com.cluster.graph.entity
 
 import scala.concurrent.duration._
-import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.{Behavior}
 import akka.actor.typed.scaladsl.{Behaviors, AbstractBehavior, ActorContext}
 import akka.cluster.sharding.typed.scaladsl.{
   ClusterSharding,
   EntityContext,
   EntityTypeKey,
-  EntityRef
 }
-import com.CborSerializable
-import scala.collection.mutable.ArrayBuffer
 
 class MirrorEntity(
     ctx: ActorContext[VertexEntity.Command],
@@ -56,14 +53,18 @@ class MirrorEntity(
         ctxLog("Beginning compute")
         value += 1
         Behaviors.same
-        case NeighbourMessage(stepNum, msg) =>
-          ctxLog("Received neighbour msg " + msg)
-          // TODO Implement
-          Behaviors.same
-        case ApplyResult(stepNum, total) =>
-          ctxLog("Received mirror total " + total)
-          // TODO Implement
-          Behaviors.same
+      case VertexEntity.End =>
+        ctxLog("Ordered to stop " + msg)
+        // TODO Implement
+        Behaviors.same
+      case VertexEntity.NeighbourMessage(stepNum, msg) =>
+        ctxLog("Received neighbour msg " + msg)
+        // TODO Implement
+        Behaviors.same
+      case ApplyResult(stepNum, total) =>
+        ctxLog("Received mirror total " + total)
+        // TODO Implement
+        Behaviors.same
 
       case VertexEntity.Idle =>
         entityContext.shard ! ClusterSharding.Passivate(ctx.self)
@@ -103,7 +104,6 @@ object MirrorEntity {
   ) extends VertexEntity.Command
 
   // GAS
-  final case class NeighbourMessage(stepNum: Int, msg: String) extends VertexEntity.Command
   final case class ApplyResult(stepNum: Int, msg: String) extends VertexEntity.Command
 
   def apply(

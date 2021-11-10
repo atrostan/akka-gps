@@ -4,8 +4,6 @@ import com.typesafe.config.ConfigFactory
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.cluster.typed.Cluster
 import akka.actor.typed.scaladsl.Behaviors
-import akka.cluster.sharding.typed.ShardingMessageExtractor
-import akka.cluster.sharding.typed.ShardingEnvelope
 import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityRef}
 import com.preprocessing.partitioning.oneDim.Main
 import scala.collection.mutable.ArrayBuffer
@@ -135,6 +133,9 @@ object EntityManager {
           case VertexEntity.SubTtl(eid, subttl) =>
             ctx.log.info("***********************{} total: {} ", eid, subttl)
         }
+        Behaviors.same
+      case _ =>
+        ctx.log.info("Unknown behaviour for entity manager")
         Behaviors.same
     }
   }

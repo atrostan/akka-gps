@@ -28,6 +28,8 @@ object VertexEntity {
 
   // GAS General Commands
   case object Begin extends VertexEntity.Command
+  case object End extends VertexEntity.Command
+  final case class NeighbourMessage(stepNum: Int, msg: String) extends VertexEntity.Command
 
   // Counter actions TESTING ONLY
   case object Increment extends VertexEntity.Command

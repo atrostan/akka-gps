@@ -2,15 +2,13 @@ package com.cluster.graph.entity
 
 import scala.concurrent.duration._
 import scala.collection.mutable.ArrayBuffer
-import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.{Behavior}
 import akka.actor.typed.scaladsl.{Behaviors, AbstractBehavior, ActorContext}
 import akka.cluster.sharding.typed.scaladsl.{
   ClusterSharding,
   EntityContext,
   EntityTypeKey,
-  EntityRef
 }
-import com.CborSerializable
 
 // Vertex actor
 class MainEntity(
@@ -58,7 +56,11 @@ class MainEntity(
         ctxLog("Beginning compute")
         value += 1
         Behaviors.same
-      case NeighbourMessage(stepNum, msg) =>
+      case VertexEntity.End =>
+        ctxLog("Ordered to stop " + msg)
+        // TODO Implement
+        Behaviors.same
+      case VertexEntity.NeighbourMessage(stepNum, msg) =>
         ctxLog("Received neighbour msg " + msg)
         // TODO Implement
         Behaviors.same
@@ -105,7 +107,6 @@ object MainEntity {
   ) extends VertexEntity.Command
 
   // GAS
-  final case class NeighbourMessage(stepNum: Int, msg: String) extends VertexEntity.Command
   final case class MirrorTotal(stepNum: Int, total: Int) extends VertexEntity.Command
 
   def apply(
