@@ -2,21 +2,21 @@ package com.cluster.graph.entity
 
 import scala.concurrent.duration._
 import scala.collection.mutable.ArrayBuffer
-import akka.actor.typed.{Behavior}
-import akka.actor.typed.scaladsl.{Behaviors, AbstractBehavior, ActorContext}
-import akka.cluster.sharding.typed.scaladsl.{
-  ClusterSharding,
-  EntityContext,
-  EntityTypeKey,
-}
+import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
+import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityContext, EntityTypeKey}
+import akka.cluster.typed.Cluster
+import com.cluster.graph.EntityManager
+import com.cluster.graph.entity.VertexEntity.LocationResponse
 
 // Vertex actor
 class MainEntity(
-    ctx: ActorContext[VertexEntity.Command],
-    nodeAddress: String,
-    entityContext: EntityContext[VertexEntity.Command]
-) extends AbstractBehavior[VertexEntity.Command](ctx)
-    with VertexEntity {
+                  ctx: ActorContext[VertexEntity.Command],
+                  nodeAddress: String,
+                  entityContext: EntityContext[VertexEntity.Command]
+                ) extends AbstractBehavior[VertexEntity.Command](ctx)
+  with VertexEntity {
+
   import MainEntity._
 
   var vertexId = 0
@@ -28,6 +28,7 @@ class MainEntity(
   var value = 0 // Counter TEST ONLY
 
   // In order for vertices to be able to send messages, they need to sharding.entityRefFor by entity id
+  val cluster = Cluster(ctx.system)
   val sharding = ClusterSharding(ctx.system)
 
   def ctxLog(event: String) {
@@ -40,15 +41,25 @@ class MainEntity(
   }
 
   override def onMessage(
-      msg: VertexEntity.Command
-  ): Behavior[VertexEntity.Command] = {
+                          msg: VertexEntity.Command
+                        ): Behavior[VertexEntity.Command] = {
     msg match {
-      case Initialize(vid, pid, neigh, mrs) =>
+
+      case Initialize(vid, pid, neigh, mrs, replyTo) =>
         ctxLog("Initializing Main")
         vertexId = vid
         partitionId = pid.toShort
         neighbors = neigh
         mirrors = mrs
+        replyTo ! EntityManager.MainResponse("henlo")
+        Behaviors.same
+
+      // PartitionCoordinator Commands
+      case VertexEntity.NotifyLocation(replyTo) =>
+        ctxLog("Partition Coordinator")
+        println("partCoord command")
+        println(replyTo)
+        replyTo ! VertexEntity.LocationResponse("henlo")
         Behaviors.same
 
       // GAS Actions
@@ -94,25 +105,29 @@ class MainEntity(
     }
   }
 }
+
 object MainEntity {
   val TypeKey: EntityTypeKey[VertexEntity.Command] =
     EntityTypeKey[VertexEntity.Command]("MainEntity")
 
   // Orchestration
+  case class InitResponse(message: String)
+
   final case class Initialize(
-      vertexId: Int,
-      partitionId: Int,
-      neighbors: ArrayBuffer[EntityId],
-      mirrors: ArrayBuffer[EntityId]
-  ) extends VertexEntity.Command
+                               vertexId: Int,
+                               partitionId: Int,
+                               neighbors: ArrayBuffer[EntityId],
+                               mirrors: ArrayBuffer[EntityId],
+                               replyTo: ActorRef[EntityManager.Command],
+                             ) extends VertexEntity.Command
 
   // GAS
   final case class MirrorTotal(stepNum: Int, total: Int) extends VertexEntity.Command
 
   def apply(
-      nodeAddress: String,
-      entityContext: EntityContext[VertexEntity.Command]
-  ): Behavior[VertexEntity.Command] = {
+             nodeAddress: String,
+             entityContext: EntityContext[VertexEntity.Command]
+           ): Behavior[VertexEntity.Command] = {
     Behaviors.setup(ctx => {
       ctx.setReceiveTimeout(30.seconds, VertexEntity.Idle)
       new MainEntity(ctx, nodeAddress, entityContext)

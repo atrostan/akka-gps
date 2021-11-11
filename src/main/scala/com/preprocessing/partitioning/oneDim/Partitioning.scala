@@ -94,12 +94,28 @@ class Partitioning(P: Int, n: Int, m: Int) {
     var s: String = ""
     for (p <- partitions) {
       s += s"Partition ${p.id}:\n"
-      s += "\tEdges:"
+
+      val partitionMains = mainArray.filter(m => m.partition == p)
+
+      s += "\tEdges: "
       for (e <- p.edges) {
         val src: Vertex = e.source
         val dest: Vertex = e.dest
         s += s"(${src.id}, ${dest.id}), "
       }
+      s += "\n"
+
+      s += "\tMain Vertices: "
+      for (v <- partitionMains) {
+        s += s"${v.id}, "
+      }
+      s += "\n"
+
+      s += "\tMirror Vertices: "
+      for ((k, v) <- p.mirrorMap) {
+        s += s"${k}, "
+      }
+
       s += "\n"
     }
     s

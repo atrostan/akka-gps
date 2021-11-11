@@ -5,9 +5,16 @@ import akka.actor.typed.{ActorRef, Behavior}
 import akka.cluster.typed.Cluster
 import akka.actor.typed.scaladsl.Behaviors
 import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityRef}
+import akka.util.Timeout
 import com.preprocessing.partitioning.oneDim.Main
+
 import scala.collection.mutable.ArrayBuffer
 import com.cluster.graph.entity._
+
+import scala.concurrent.{Await, Future}
+import scala.concurrent.duration._
+import scala.util.Failure
+import scala.util.Success
 
 // EntityManager actor
 // in charge of both:
@@ -18,25 +25,30 @@ object EntityManager {
   sealed trait Command
 
   case class Initialize(
-      entityClass: String,
-      vertexId: Int,
-      partitionId: Int,
-      neighbors: ArrayBuffer[EntityId]
-  ) extends Command
+                         entityClass: String,
+                         vertexId: Int,
+                         partitionId: Int,
+                         neighbors: ArrayBuffer[EntityId]
+                       ) extends Command
+
+  case class MainResponse(message: String) extends Command
 
   // GAS
   case class TerminationVote(stepNum: Int) extends Command
 
   // Counter TEST ONLY
   case class AddOne(entityClass: String, vertexId: Int, partitionId: Int) extends Command
+
   case class GetSum(entityClass: String, vertexId: Int, partitionId: Int) extends Command
+
   case class WrappedTotal(res: VertexEntity.Response) extends Command
+
   case class Received(i: Int) extends Command
 
   def apply(
-      partitionMap: collection.mutable.Map[Int, Int],
-      mainArray: Array[Main]
-  ): Behavior[Command] = Behaviors.setup { ctx =>
+             partitionMap: collection.mutable.Map[Int, Int],
+             mainArray: Array[Main]
+           ): Behavior[Command] = Behaviors.setup { ctx =>
     val myShardAllocationStrategy = new MyShardAllocationStrategy(partitionMap)
     val cluster = Cluster(ctx.system)
     val sharding = ClusterSharding(ctx.system)
@@ -66,22 +78,48 @@ object EntityManager {
     }
 
     // Initialize vertex. If the vertex is a main, tell the command to all its mirrors.
+    // TODO; should be asynchronous; before beginning computation, we must ensure all main and mirror
+    // are initialized
+
     def initMainAndMirrors(
-        eid: EntityId,
-        neighbors: ArrayBuffer[EntityId]
-    ): Unit = {
+                            eid: EntityId,
+                            neighbors: ArrayBuffer[EntityId]
+                          ): Unit = {
       val entityRef: EntityRef[VertexEntity.Command] =
         sharding.entityRefFor(VertexEntity.TypeKey, eid.toString)
+      implicit val timeout: Timeout = 3.seconds
       // initialize all mirrors of main // TODO Review main check is needed anymore
       if (isMain(eid)) {
+        val mainERef: EntityRef[MainEntity.Initialize] = sharding.entityRefFor(VertexEntity.TypeKey, eid.toString)
         val mirrors = mainArray(eid.vertexId).mirrors.map(m =>
           new EntityId(MirrorEntity.getClass.toString(), m.id, m.partition.id)
         )
+
+        entityRef ? (entityRef => MainEntity.Initialize(
+          eid.vertexId,
+          eid.partitionId,
+          neighbors,
+          mirrors,
+          entityRef
+        ))
+
+//        val future = mainERef ? MainEntity.Initialize(ctx.self,
+//          eid.vertexId,
+//          eid.partitionId,
+//          neighbors,
+//          mirrors
+//        )
+        //        (
+
+        //        )
+//        val result = Await.result(future, timeout.duration).asInstanceOf[String]
+//        println(result)
         entityRef ! MainEntity.Initialize(
           eid.vertexId,
           eid.partitionId,
           neighbors,
-          mirrors
+          mirrors,
+          ctx.self,
         )
         // val mirrorEntityRefs = mirrors.map(mid => sharding.entityRefFor(VertexEntity.TypeKey, mid.toString))
         ctx.log.info("Initializing all mirrors:{}", mirrors.toString)

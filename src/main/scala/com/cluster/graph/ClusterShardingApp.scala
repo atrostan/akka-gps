@@ -4,12 +4,18 @@ import akka.actor.typed._
 import akka.cluster.Member
 import com.graph.{Edge, Vertex}
 import com.preprocessing.partitioning.oneDim.Partitioning
-import com.typesafe.config.ConfigFactory
+import com.typesafe.config.{Config, ConfigFactory}
+
 import scala.collection.mutable.ArrayBuffer
 import com.cluster.graph.entity.{EntityId, MainEntity, MirrorEntity}
 
 object ClusterShardingApp {
 
+  val partitionMap = collection.mutable.Map[Int, Int]()
+  val partCoordMap = collection.mutable.Map[Int, Int]()
+  val numberOfShards = ConfigFactory
+    .load("cluster")
+    .getInt("akka.cluster.sharding.number-of-shards")
   // example of how to define a custom type
   // TODO use more type aliases in project
   //  type PartitionMap = collection.mutable.Map[Int, Int]
@@ -21,17 +27,19 @@ object ClusterShardingApp {
   //  val myPMap: PartitionMap = collection.mutable.Map[Int,Int]()
 
   // Sample graph for partitioning and akka population test
-  def initGraphPartitioning(): Partitioning = {
+  def initGraphPartitioning(nPartitions: Int): Partitioning = {
     val edges = ArrayBuffer[Edge]()
-    val nPartitions: Int = 4
-    val nNodes: Int = 5
-    val nEdges: Int = 10
+    val nNodes: Int = 8
+    val nEdges: Int = 14
 
     val v0 = Vertex(0)
     val v1 = Vertex(1)
     val v2 = Vertex(2)
     val v3 = Vertex(3)
     val v4 = Vertex(4)
+    val v5 = Vertex(5)
+    val v6 = Vertex(6)
+    val v7 = Vertex(7)
 
     val e0 = Edge(v0, v1)
     val e1 = Edge(v0, v2)
@@ -43,35 +51,93 @@ object ClusterShardingApp {
     val e7 = Edge(v3, v1)
     val e8 = Edge(v0, v4)
     val e9 = Edge(v4, v0)
+    val e10 = Edge(v5, v6)
+    val e11 = Edge(v6, v7)
+    val e12 = Edge(v7, v0)
+    val e13 = Edge(v0, v7)
 
-    val es = ArrayBuffer(e0, e1, e2, e3, e4, e5, e6, e7, e8, e9)
-    edges ++= es
+    val vs = ArrayBuffer(v0, v1, v2, v3, v4)
+
+    val es = ArrayBuffer(e0, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13)
     // create partitioning data structure
-    val png = Partitioning(nPartitions, edges, nNodes, nEdges)
+    val png = Partitioning(nPartitions, es, nNodes, nEdges)
+    println("Partitioning result:")
+    println(png)
     png
   }
 
   def main(args: Array[String]): Unit = {
-    val partitionMap = collection.mutable.Map[Int, Int]()
+
+    val png = initGraphPartitioning(numberOfShards)
+
     if (args.isEmpty) {
-      val ports = ArrayBuffer[Int](25252, 25253, 25254, 25255)
-      startup("domainListener", ports.head - 1, partitionMap)
+      val shardPorts = ArrayBuffer[Int](25252, 25253, 25254, 25255)
+      val partCoordPorts = shardPorts.map(p => p + numberOfShards) // while still testing locally, use additional ports for the partitionCoordinator. TODO; in the distributed setting, each physical node will have a port per shard and port perf partitionCoordinator
+      startup("domainListener", shardPorts.head - 1, partitionMap, png, -1)
 
-      var i: Int = 0;
-      ports.foreach(p => {
-        partitionMap(i) = p
-        startup("shard", p, partitionMap)
-        i += 1
-      })
+      var partitionId: Int = 0;
 
-      startup("front", ports.last + 1, partitionMap)
+      for (shardPort <- shardPorts) {
+        println(shardPort)
+        partitionMap(partitionId) = shardPort
+        startup("shard", shardPort, partitionMap, png, partitionId)
+        partitionId += 1
+      }
+
+      //      partitionId = 0
+      //      for (partCoordPort <- partCoordPorts) {
+      //        println(partCoordPort)
+      //
+      //        partCoordMap(partitionId) = partCoordPort
+      //        startup("partitionCoordinator", partCoordPort, partCoordMap, png, partitionId)
+      //        partitionId += 1
+      //      }
+
+      startup("front", shardPorts.last + numberOfShards + 1, partitionMap, png, -1)
     } else {
       require(args.size == 2, "Usage: role port")
-      startup(args(0), args(1).toInt, partitionMap)
+      startup(args(0), args(1).toInt, partitionMap, png, -1)
     }
   }
 
-  def startup(role: String, port: Int, partitionMap: collection.mutable.Map[Int, Int]): Unit = {
+  def initEntityManager(png: Partitioning, config: Config): ActorSystem[EntityManager.Command] = {
+    ActorSystem[EntityManager.Command](
+      EntityManager(partitionMap, png.mainArray),
+      "ClusterSystem", config
+    )
+  }
+
+  def initPartitionCoordinator(
+                                partitionId: Int,
+                                port: Int,
+                                png: Partitioning
+                              ): ActorSystem[PartitionCoordinator.Command] = {
+    // create a partition coordinator
+    val partitionCoordinatorConfig = ConfigFactory
+      .parseString(
+        s"""
+      akka.remote.artery.canonical.port=${port}
+      akka.cluster.roles = [partitionCoordinator]
+      """)
+      .withFallback(ConfigFactory.load("cluster"))
+    partCoordMap(port) = partitionId
+    val mains = png.mainArray
+      .filter(m => m.partition.id == partitionId)
+      .map(m => new EntityId("Main", m.id, partitionId))
+      .toList
+    ActorSystem[PartitionCoordinator.Command](
+      PartitionCoordinator(mains, partitionId),
+      "ClusterSystem", partitionCoordinatorConfig
+    )
+  }
+
+  def startup(
+               role: String,
+               port: Int,
+               partitionMap: collection.mutable.Map[Int, Int],
+               png: => Partitioning,
+               partitionId: Int
+             ): Unit = {
     // Override the configuration of the port when specified as program argument
     val config = ConfigFactory
       .parseString(
@@ -82,25 +148,28 @@ object ClusterShardingApp {
       .withFallback(ConfigFactory.load("cluster"))
 
     var nodesUp = collection.mutable.Set[Member]()
-    val png = initGraphPartitioning()
 
     if (role == "domainListener") {
+      println(s"starting ${role} on ${port}")
       // enable ClusterMemberEventListener for logging purposes
       ActorSystem(ClusterMemberEventListener(nodesUp), "ClusterSystem", config)
     } else {
-      val entityManager =
-        ActorSystem[EntityManager.Command](
-          EntityManager(partitionMap, png.mainArray),
-          "ClusterSystem", config
-        )
+      // create an entity manager for this partition
+      val entityManager = initEntityManager(png, config)
+      val partitionCoordinator = initPartitionCoordinator(partitionId, port + numberOfShards, png)
 
       if (role == "front") {
         // init mains and mirrors
         // TODO Decide whether to pass Partition object or just id.
         // TODO Decide on whether to put here or elsewhere, the conversion of neighbour Actor to a simple string/EntityId form. Maybe entityIds should be constructed here?
-        // TODO Need to distinguish if neighbor is main or mirror. For passes along info to EntityManager 
+        // TODO Need to distinguish if neighbor is main or mirror. For passes along info to EntityManager
         for (main <- png.mainArray) entityManager ! EntityManager.Initialize(MainEntity.getClass.toString(), main.id, main.partition.id, main.neighbors.map(n => new EntityId(MainEntity.getClass.toString(), n.id, n.partition.id)))
+      }
+      // after initialization, each partition coordinator should broadcast its location to its mains
+      println("broadcasting location")
+      partitionCoordinator ! PartitionCoordinator.BroadcastLocation()
 
+      if (role == "front") {
         // increment mains and their mirrors
         for (main <- png.mainArray) entityManager ! EntityManager.AddOne(MainEntity.getClass.toString(), main.id, main.partition.id)
         for (main <- png.mainArray) entityManager ! EntityManager.AddOne(MainEntity.getClass.toString(), main.id, main.partition.id)
@@ -113,6 +182,8 @@ object ClusterShardingApp {
           }
         }
       }
+
+
     }
   }
 }

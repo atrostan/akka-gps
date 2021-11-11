@@ -2,14 +2,11 @@ package com.cluster.graph.entity
 
 import scala.concurrent.duration._
 import akka.actor.typed.{ActorRef, Behavior}
-import akka.actor.typed.scaladsl.{Behaviors, AbstractBehavior, ActorContext}
-import akka.cluster.sharding.typed.scaladsl.{
-  ClusterSharding,
-  EntityContext,
-  EntityTypeKey,
-  EntityRef
-}
+import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
+import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityContext, EntityRef, EntityTypeKey}
 import com.CborSerializable
+import com.cluster.graph.PartitionCoordinator
+
 import scala.collection.mutable.ArrayBuffer
 
 trait VertexEntity {
@@ -24,7 +21,14 @@ object VertexEntity {
   case object StopVertex extends Command
   case object Idle extends Command
 
+  case class LocationResponse(message: String)
+
   val TypeKey = EntityTypeKey[VertexEntity.Command]("VertexEntity")
+
+  // PartitionCoordinator Commands
+  final case class NotifyLocation(replyTo: ActorRef[LocationResponse]) extends VertexEntity.Command
+
+
 
   // GAS General Commands
   case object Begin extends VertexEntity.Command
