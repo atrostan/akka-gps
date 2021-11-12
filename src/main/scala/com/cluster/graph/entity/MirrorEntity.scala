@@ -1,20 +1,18 @@
 package com.cluster.graph.entity
 
 import scala.concurrent.duration._
-import akka.actor.typed.{Behavior}
-import akka.actor.typed.scaladsl.{Behaviors, AbstractBehavior, ActorContext}
-import akka.cluster.sharding.typed.scaladsl.{
-  ClusterSharding,
-  EntityContext,
-  EntityTypeKey,
-}
+import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
+import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityContext, EntityTypeKey}
+import com.CborSerializable
 
 class MirrorEntity(
-    ctx: ActorContext[VertexEntity.Command],
-    nodeAddress: String,
-    entityContext: EntityContext[VertexEntity.Command]
-) extends AbstractBehavior[VertexEntity.Command](ctx)
-    with VertexEntity {
+                    ctx: ActorContext[VertexEntity.Command],
+                    nodeAddress: String,
+                    entityContext: EntityContext[VertexEntity.Command]
+                  ) extends AbstractBehavior[VertexEntity.Command](ctx)
+  with VertexEntity {
+
   import MirrorEntity._
 
   var vertexId = 0
@@ -37,15 +35,16 @@ class MirrorEntity(
   }
 
   override def onMessage(
-      msg: VertexEntity.Command
-  ): Behavior[VertexEntity.Command] = {
+                          msg: VertexEntity.Command
+                        ): Behavior[VertexEntity.Command] = {
     msg match {
-      case InitializeMirror(vid, pid, m) =>
-        ctxLog("Initializing mirror")
-
+      case InitializeMirror(vid, pid, m, replyTo) =>
         vertexId = vid
         partitionId = pid.toShort
         main = m
+        val logStr = s"Received ask to initialize Mirror ${vertexId}_${partitionId}"
+        ctxLog(logStr)
+        replyTo ! InitResponse(s"Initialized Mirror ${vertexId}_${partitionId}")
         Behaviors.same
 
       // GAS Actions
@@ -92,24 +91,29 @@ class MirrorEntity(
     }
   }
 }
+
 object MirrorEntity {
   val TypeKey: EntityTypeKey[VertexEntity.Command] =
     EntityTypeKey[VertexEntity.Command]("MirrorEntity")
 
   // Orchestration
+  sealed trait Reply
+  case class InitResponse(message: String) extends CborSerializable with Reply
+
   final case class InitializeMirror(
-      vertexId: Int,
-      partitionId: Int,
-      main: EntityId
-  ) extends VertexEntity.Command
+                                     vertexId: Int,
+                                     partitionId: Int,
+                                     main: EntityId,
+                                     replyTo: ActorRef[InitResponse]
+                                   ) extends VertexEntity.Command
 
   // GAS
   final case class ApplyResult(stepNum: Int, msg: String) extends VertexEntity.Command
 
   def apply(
-      nodeAddress: String,
-      entityContext: EntityContext[VertexEntity.Command]
-  ): Behavior[VertexEntity.Command] = {
+             nodeAddress: String,
+             entityContext: EntityContext[VertexEntity.Command]
+           ): Behavior[VertexEntity.Command] = {
     Behaviors.setup(ctx => {
       ctx.setReceiveTimeout(30.seconds, VertexEntity.Idle)
       new MirrorEntity(ctx, nodeAddress, entityContext)

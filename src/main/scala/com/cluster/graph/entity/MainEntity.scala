@@ -6,7 +6,8 @@ import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
 import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityContext, EntityTypeKey}
 import akka.cluster.typed.Cluster
-import com.cluster.graph.EntityManager
+import com.CborSerializable
+import com.cluster.graph.{EntityManager, PartitionCoordinator}
 import com.cluster.graph.entity.VertexEntity.LocationResponse
 
 // Vertex actor
@@ -23,6 +24,7 @@ class MainEntity(
   var partitionId = 0
   private var neighbors: ArrayBuffer[EntityId] = null
   private var mirrors: ArrayBuffer[EntityId] = null
+  private var partitionCoordinatorRef: ActorRef[PartitionCoordinator.Command] = null
   // TODO neighbourCounter, summedTotal
 
   var value = 0 // Counter TEST ONLY
@@ -44,22 +46,22 @@ class MainEntity(
                           msg: VertexEntity.Command
                         ): Behavior[VertexEntity.Command] = {
     msg match {
-
       case Initialize(vid, pid, neigh, mrs, replyTo) =>
-        ctxLog("Initializing Main")
         vertexId = vid
         partitionId = pid.toShort
         neighbors = neigh
         mirrors = mrs
-        replyTo ! EntityManager.MainResponse("henlo")
+
+        val logStr = s"Received ask to initialize Main ${vertexId}_${partitionId}"
+        ctxLog(logStr)
+        replyTo ! InitResponse(s"Initialized Main ${vertexId}_${partitionId}")
         Behaviors.same
 
       // PartitionCoordinator Commands
-      case VertexEntity.NotifyLocation(replyTo) =>
-        ctxLog("Partition Coordinator")
+      case StorePCRef(pcRef, replyTo) =>
         println("partCoord command")
-        println(replyTo)
-        replyTo ! VertexEntity.LocationResponse("henlo")
+        println(pcRef)
+        replyTo ! AckPCLocation()
         Behaviors.same
 
       // GAS Actions
@@ -111,15 +113,25 @@ object MainEntity {
     EntityTypeKey[VertexEntity.Command]("MainEntity")
 
   // Orchestration
-  case class InitResponse(message: String)
+  sealed trait Reply
+
+  case class InitResponse(message: String) extends CborSerializable with Reply
+
+  case class AckPCLocation() extends CborSerializable with Reply
 
   final case class Initialize(
                                vertexId: Int,
                                partitionId: Int,
                                neighbors: ArrayBuffer[EntityId],
                                mirrors: ArrayBuffer[EntityId],
-                               replyTo: ActorRef[EntityManager.Command],
+                               replyTo: ActorRef[InitResponse],
                              ) extends VertexEntity.Command
+
+  final case class StorePCRef(
+                               pcRef: ActorRef[PartitionCoordinator.Command],
+                               replyTo: ActorRef[AckPCLocation]
+                             ) extends VertexEntity.Command
+
 
   // GAS
   final case class MirrorTotal(stepNum: Int, total: Int) extends VertexEntity.Command
