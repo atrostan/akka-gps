@@ -77,7 +77,7 @@ object EntityManager {
         val mirrors = mainArray(eid.vertexId).mirrors.map(m =>
           new EntityId(MirrorEntity.getClass.toString(), m.id, m.partition.id)
         )
-        entityRef ! MainEntity.Initialize(
+        entityRef ! VertexEntity.Initialize(
           eid.vertexId,
           eid.partitionId,
           neighbors,
@@ -87,7 +87,7 @@ object EntityManager {
         ctx.log.info("Initializing all mirrors:{}", mirrors.toString)
         for (m <- mirrors) {
           val eRef = sharding.entityRefFor(VertexEntity.TypeKey, m.toString)
-          eRef ! MirrorEntity.InitializeMirror(m.vertexId, m.partitionId, eid)
+          eRef ! VertexEntity.InitializeMirror(m.vertexId, m.partitionId, eid)
         }
       }
     }
