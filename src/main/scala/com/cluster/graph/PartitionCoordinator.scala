@@ -127,8 +127,6 @@ class PartitionCoordinator(
 
 object PartitionCoordinator {
 
-  val PartitionCoordinatorKey = ServiceKey[PartitionCoordinator.Command]("partitionCoordinator")
-
   trait Command extends CborSerializable
   sealed trait Reply
   case class InitResponse(message: String) extends CborSerializable with Reply
@@ -157,6 +155,8 @@ object PartitionCoordinator {
              partitionId: Int
            ): Behavior[PartitionCoordinator.Command] = {
     Behaviors.setup(ctx => {
+      println("trying to register a partition coordinator with puid", partitionId)
+      val PartitionCoordinatorKey = ServiceKey[PartitionCoordinator.Command](s"partitionCoordinator${partitionId}")
       ctx.system.receptionist ! Receptionist.Register(PartitionCoordinatorKey, ctx.self)
       //ctx.setReceiveTimeout(30.seconds, )
       new PartitionCoordinator(ctx, mains, partitionId)

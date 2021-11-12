@@ -1,6 +1,6 @@
 package com.cluster.graph
 
-import akka.actor.typed.receptionist.Receptionist
+import akka.actor.typed.receptionist.{Receptionist, ServiceKey}
 import com.typesafe.config.ConfigFactory
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.cluster.typed.Cluster
@@ -42,7 +42,7 @@ object EntityManager {
   case class NMainsInitResponse(n: Int)
   case class GetNMirrorsInitialized(replyTo: ActorRef[NMirrorsInitResponse]) extends Command
   case class NMirrorsInitResponse(n: Int)
-  case class findPC() extends Command
+  case class findPC(pid: Int) extends Command
   private case class ListingResponse(listing: Receptionist.Listing) extends Command
 
 
@@ -63,6 +63,7 @@ object EntityManager {
              partitionMap: collection.mutable.Map[Int, Int],
              mainArray: Array[Main]
            ): Behavior[Command] = Behaviors.setup { ctx =>
+
     val listingResponseAdapter = ctx.messageAdapter[Receptionist.Listing](ListingResponse.apply)
 
     val myShardAllocationStrategy = new MyShardAllocationStrategy(partitionMap)
@@ -209,14 +210,28 @@ object EntityManager {
         initMainAndMirrors(eid, neighbors)
         Behaviors.same
 
-      case findPC() =>
-        ctx.system.receptionist ! Receptionist.Find(PartitionCoordinator.PartitionCoordinatorKey, listingResponseAdapter)
+      case findPC(pid) =>
+        val PartitionCoordinatorKey = ServiceKey[PartitionCoordinator.Command](s"partitionCoordinator${pid}")
+        val f: Future[Receptionist.Listing] = ctx.system.receptionist.ask { replyTo =>
+          Receptionist.Find(PartitionCoordinatorKey, replyTo)
+        }
+
+        val PCListingResult = Await.result(f, waitTime)
+        PCListingResult match {
+          case ActorRef[Receptionist.Listing] =>
+            println(message)
+            1
+          case _ =>
+            println(s"Failed to find PC thru Receptionist")
+            0
+        }
+//        ctx.system.receptionist ! Receptionist.Find(PartitionCoordinatorKey, listingResponseAdapter)
         Behaviors.same
 
-      case ListingResponse(PartitionCoordinator.PartitionCoordinatorKey.Listing(listings)) =>
-        println("these are the listings,,,")
-        println(listings)
-        Behaviors.same
+//      case ListingResponse(ServiceKey[PartitionCoordinator.Command](s"partitionCoordinator${pid}").Listing(listings)) =>
+//        println("these are the listings,,,")
+//        println(listings)
+//        Behaviors.same
 
       case AddOne(eCl, vid, pid) =>
         val eid = new EntityId(eCl, vid, pid)
