@@ -1,25 +1,32 @@
 package com.cluster.graph
 
 import akka.actor.typed.scaladsl.Behaviors
-import akka.actor.typed.{Behavior, PostStop}
+import akka.actor.typed.{ActorRef, Behavior, PostStop}
 import akka.cluster.ClusterEvent._
 import akka.cluster.typed.{Cluster, Subscribe, Unsubscribe}
 import akka.cluster.{Member, MemberStatus}
+import com.CborSerializable
+import com.Typedefs.MemberSet
 
 object ClusterMemberEventListener {
 
-  type MemberSet = collection.mutable.Set[Member]
-  object MemberSet {
-    def empty: MemberSet = collection.mutable.Set.empty
-    def apply(ms: (Member)*): MemberSet = collection.mutable.Set(ms:_*)
-  }
-  def apply(nodesUp: MemberSet): Behavior[ClusterDomainEvent] = Behaviors.setup[ClusterDomainEvent] { context =>
+  trait Command extends CborSerializable
+  sealed trait Reply extends CborSerializable
+  case class nMembersUpResponse(n: Int) extends Reply
+
+  case class nMembersUp(replyTo: ActorRef[nMembersUpResponse]) extends ClusterDomainEvent
+
+  def apply(nodesUp: MemberSet, nNodes: Int): Behavior[ClusterDomainEvent] = Behaviors.setup[ClusterDomainEvent] { context =>
     Cluster(context.system).subscriptions ! Subscribe(
       context.self,
       classOf[ClusterDomainEvent])
 
     Behaviors
       .receiveMessage[ClusterDomainEvent] {
+
+        case nMembersUp(replyTo) =>
+          replyTo ! nMembersUpResponse(nodesUp.size)
+          Behaviors.same
 
         case MemberJoined(member) =>
           context.log.info(s"$member JOINED")

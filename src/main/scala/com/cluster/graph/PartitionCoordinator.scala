@@ -1,15 +1,15 @@
 package com.cluster.graph
 
+import akka.actor.typed.receptionist.Receptionist.Registered
 import akka.actor.typed.receptionist.{Receptionist, ServiceKey}
-
-import scala.util.Success
-import scala.util.Failure
+import akka.actor.typed.scaladsl.AskPattern.Askable
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
 import akka.cluster.typed.Cluster
-import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityRef}
+import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityRef}
 import akka.util.Timeout
 import com.CborSerializable
+import com.Typedefs.GCRef
 import com.cluster.graph.entity.{EntityId, MainEntity, VertexEntity}
 
 import scala.collection.mutable.ArrayBuffer
@@ -28,9 +28,9 @@ import scala.concurrent.duration.DurationInt
  * the PartitionCoordinator notifies the centralCoordinator that partition i
  * has completed the current superstep
  *
- * @param nMains
- * The number of main vertices in the partition assigned to this PartitionCoordinator
- * @param partitionId
+ * @param mns
+ * The main vertices in the partition assigned to this PartitionCoordinator
+ * @param pid
  * The partition id of the partition assigned to this PartitionCoordinator
  */
 
@@ -47,6 +47,7 @@ class PartitionCoordinator(
   var nMains = 0
   var nMainsAckd = 0
   val pcRef: ActorRef[PartitionCoordinator.Command] = ctx.self
+  var gcRef: ActorRef[GlobalCoordinator.Command] = null
   val waitTime = 10 seconds
   implicit val timeout: Timeout = waitTime
   implicit val ec = ctx.system.executionContext
@@ -103,6 +104,13 @@ class PartitionCoordinator(
         replyTo ! InitResponse(s"Initialized PC on partition ${pid} with ${mains.length} mains")
         Behaviors.same
 
+      case UpdateGC(gc, replyTo) =>
+        gcRef = gc
+        val response = s"PC${partitionId} GlobalCoordinator reference updated!"
+        replyTo ! UpdateGCResponse(response)
+        Behaviors.same
+
+
       case Done(stepNum) =>
         Behaviors.same
 
@@ -128,14 +136,17 @@ class PartitionCoordinator(
 object PartitionCoordinator {
 
   trait Command extends CborSerializable
-  sealed trait Reply
-  case class InitResponse(message: String) extends CborSerializable with Reply
+  sealed trait Reply extends CborSerializable
 
   final case class Initialize(
-                               mains: ArrayBuffer[EntityId],
+                               mains: List[EntityId],
                                partitionId: Int,
                                replyTo: ActorRef[InitResponse]
                              ) extends Command
+  case class InitResponse(message: String) extends Reply
+
+  final case class UpdateGC(gcRef: GCRef, replyTo: ActorRef[UpdateGCResponse]) extends Command
+  case class UpdateGCResponse(message: String) extends Reply
 
   case class Done(stepNum: Int) extends Command
 
@@ -154,8 +165,9 @@ object PartitionCoordinator {
              mains: List[EntityId],
              partitionId: Int
            ): Behavior[PartitionCoordinator.Command] = {
+
     Behaviors.setup(ctx => {
-      println("trying to register a partition coordinator with puid", partitionId)
+
       val PartitionCoordinatorKey = ServiceKey[PartitionCoordinator.Command](s"partitionCoordinator${partitionId}")
       ctx.system.receptionist ! Receptionist.Register(PartitionCoordinatorKey, ctx.self)
       //ctx.setReceiveTimeout(30.seconds, )

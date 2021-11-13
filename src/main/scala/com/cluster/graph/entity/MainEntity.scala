@@ -24,7 +24,7 @@ class MainEntity(
   var partitionId = 0
   private var neighbors: ArrayBuffer[EntityId] = null
   private var mirrors: ArrayBuffer[EntityId] = null
-  private var partitionCoordinatorRef: ActorRef[PartitionCoordinator.Command] = null
+  private var pc: ActorRef[PartitionCoordinator.Command] = null
   // TODO neighbourCounter, summedTotal
 
   var value = 0 // Counter TEST ONLY

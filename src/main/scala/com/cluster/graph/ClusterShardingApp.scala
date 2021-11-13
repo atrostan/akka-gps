@@ -4,6 +4,8 @@ import akka.actor.typed._
 import akka.actor.typed.scaladsl.AskPattern.{Askable, schedulerFromActorSystem}
 import akka.cluster.{ClusterEvent, Member}
 import akka.util.Timeout
+import com.Conversion
+import com.Typedefs.{GCRef, PCRef}
 import com.cluster.graph.ClusterShardingApp.partitionMap
 import com.graph.{Edge, Vertex}
 import com.preprocessing.partitioning.oneDim.Partitioning
@@ -13,6 +15,8 @@ import scala.collection.mutable.ArrayBuffer
 import com.cluster.graph.entity.{EntityId, MainEntity, MirrorEntity}
 import com.cluster.graph.Init._
 
+import java.nio.charset.StandardCharsets
+import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, Future}
 
 object ClusterShardingApp {
@@ -22,70 +26,32 @@ object ClusterShardingApp {
   val numberOfShards = ConfigFactory
     .load("cluster")
     .getInt("akka.cluster.sharding.number-of-shards")
-  // example of how to define a custom type
-  // TODO use more type aliases in project
-  //  type PartitionMap = collection.mutable.Map[Int, Int]
-  //  object PartitionMap {
-  //    def empty: PartitionMap = collection.mutable.Map.empty
-  //    def apply(pairs: (Int,Int)*): PartitionMap = collection.mutable.Map(pairs:_*)
-  //  }
-  //
-  //  val myPMap: PartitionMap = collection.mutable.Map[Int,Int]()
 
-  // Sample graph for partitioning and akka population test
-  def initGraphPartitioning(nPartitions: Int): Partitioning = {
-    val edges = ArrayBuffer[Edge]()
-    val nNodes: Int = 8
-    val nEdges: Int = 14
-
-    val v0 = Vertex(0)
-    val v1 = Vertex(1)
-    val v2 = Vertex(2)
-    val v3 = Vertex(3)
-    val v4 = Vertex(4)
-    val v5 = Vertex(5)
-    val v6 = Vertex(6)
-    val v7 = Vertex(7)
-
-    val e0 = Edge(v0, v1)
-    val e1 = Edge(v0, v2)
-    val e2 = Edge(v0, v3)
-    val e3 = Edge(v1, v2)
-    val e4 = Edge(v2, v0)
-    val e5 = Edge(v2, v3)
-    val e6 = Edge(v3, v0)
-    val e7 = Edge(v3, v1)
-    val e8 = Edge(v0, v4)
-    val e9 = Edge(v4, v0)
-    val e10 = Edge(v5, v6)
-    val e11 = Edge(v6, v7)
-    val e12 = Edge(v7, v0)
-    val e13 = Edge(v0, v7)
-
-    val vs = ArrayBuffer(v0, v1, v2, v3, v4)
-
-    val es = ArrayBuffer(e0, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13)
-    // create partitioning data structure
-    val png = Partitioning(nPartitions, es, nNodes, nEdges)
-    println("Partitioning result:")
-    println(png)
-    png
-  }
+  // number of nodes in the cluster =
+  // (partitionCoordinator, shard) * nPartitions + domainlistener + front + globalCoordinator
+  val nNodes = numberOfShards * 2 + 3
 
   def main(args: Array[String]): Unit = {
 
     val png = initGraphPartitioning(numberOfShards)
+    val nodesUp = collection.mutable.Set[Member]()
 
+    println(s"initializing cluster with ${nNodes} compute nodes")
+
+    println("init domain listener")
     // create domainlistener
     val domainListenerPort = 25251
     val domainListenerRole = "domainListener"
-    var nodesUp = collection.mutable.Set[Member]()
     val domainListenerConfig = createConfig(domainListenerRole, domainListenerPort)
-    val domainListener = ActorSystem(ClusterMemberEventListener(nodesUp), "ClusterSystem", domainListenerConfig)
+    val domainListener: ActorSystem[ClusterEvent.ClusterDomainEvent] = ActorSystem(ClusterMemberEventListener(nodesUp, nNodes), "ClusterSystem", domainListenerConfig)
 
     // create global coordinator
-
-    val shardPorts = ArrayBuffer[Int](25252, 25253, 25254, 25255)
+    val globalCoordinatorPort = 25252
+    val globalCoordinatorRole = "globalCoordinator"
+    val globalCoordinatorConfig = createConfig(globalCoordinatorRole, globalCoordinatorPort)
+    val globalCoordinator: ActorSystem[GlobalCoordinator.Command] = ActorSystem(GlobalCoordinator(), "ClusterSystem", globalCoordinatorConfig)
+    val gcActorRefResolver = ActorRefResolver(globalCoordinator)
+    val shardPorts = ArrayBuffer[Int](25253, 25254, 25255, 25256)
     val shardActors = ArrayBuffer[ActorSystem[EntityManager.Command]]()
     val pcActors = ArrayBuffer[ActorSystem[PartitionCoordinator.Command]]()
     var pid = 0
@@ -115,72 +81,83 @@ object ClusterShardingApp {
         PartitionCoordinator(mains, pid),
         "ClusterSystem", pcConfig
       )
+      blockInitPartitionCoordinator(pc, mains, pid)
 
       pcActors += pc
-      pid+=1
+      pid += 1
     }
 
-
-
-    for (a <- shardActors) {
-      println(a.path)
-      println(a.address)
-    }
-
-    for (a <- pcActors) {
-      println(a.path)
-      println(a.address)
-    }
-
-    val frontPort = 25260
+    val frontPort = 25261
     val frontRole = "front"
 
     val frontConfig = createConfig(frontRole, frontPort)
-    println("front pmap:" , partitionMap)
     val entityManager = ActorSystem[EntityManager.Command](
       EntityManager(partitionMap, png.mainArray),
       "ClusterSystem", frontConfig
     )
-    println(s"Initializing ${nMains} Mains and ${nMirrors} Mirrors...")
-    for (main <- png.mainArray) {
-      println(main)
-      entityManager ! EntityManager.Initialize(
-        MainEntity.getClass.toString(),
-        main.id,
-        main.partition.id,
-        main.neighbors.map(
-          n => new EntityId(MainEntity.getClass.toString(), n.id, n.partition.id)
-        )
-      )
-    }
 
-    val nMainsInitialized = getNMainsInitialized(entityManager)
-    val nMirrorsInitialized = getNMirrorsInitialized(entityManager)
+    val resolver = ActorRefResolver(entityManager)
 
-    println("Checking that all Mains, Mirrors have been initialized...")
-    assert(nMainsInitialized == nMains)
-    assert(nMirrorsInitialized == nMirrors)
-    // after initialization, each partition coordinator should broadcast its location to its mains
-    entityManager ! EntityManager.findPC(0)
+    println("Blocking until all cluster members are up...")
+    blockUntilAllMembersUp(domainListener, nNodes)
 
+    println("Blocking until all Partition Coordinators members are registered...")
+    val pcRefs: collection.mutable.Map[Int, PCRef] = blockUntilAllPCsRegistered(entityManager, numberOfShards)
 
-//    if (args.isEmpty) {
-//      val shardPorts = ArrayBuffer[Int](25252, 25253, 25254, 25255)
-//      startup("domainListener", shardPorts.head - 1, partitionMap, png, -1)
-//
-//      var partitionId: Int = 0;
-//
-//      for (shardPort <- shardPorts) {
-//        partitionMap(partitionId) = shardPort
-//        startup("shard", shardPort, partitionMap, png, partitionId)
-//        partitionId += 1
-//      }
-//
-//      startup("front", shardPorts.last + numberOfShards + 1, partitionMap, png, -1)
-//    } else {
-//      require(args.size == 2, "Usage: role port")
-//      startup(args(0), args(1).toInt, partitionMap, png, -1)
+    println("Blocking until the Global Coordinator is initialized and registered...")
+    blockInitGlobalCoordinator(globalCoordinator, pcRefs, nNodes)
+    val gcRef: GCRef = blockUntilGlobalCoordinatorRegistered(entityManager)
+    println("Broadcasting the Global Coordinator address to all Partition Coordinators")
+
+    broadcastGCtoPCs(gcRef, globalCoordinator.scheduler)
+
+//    Thread.sleep(10000)
+
+//    for (i <- 0 until numberOfShards) {
+//      entityManager ! EntityManager.askPCRefFromReceptionist(i)
 //    }
+
+
+    //    println(s"Initializing ${nMains} Mains and ${nMirrors} Mirrors...")
+    //    for (main <- png.mainArray) {
+    //      println(main)
+    //      entityManager ! EntityManager.Initialize(
+    //        MainEntity.getClass.toString(),
+    //        main.id,
+    //        main.partition.id,
+    //        main.neighbors.map(
+    //          n => new EntityId(MainEntity.getClass.toString(), n.id, n.partition.id)
+    //        )
+    //      )
+    //    }
+    //
+    //    val nMainsInitialized = getNMainsInitialized(entityManager)
+    //    val nMirrorsInitialized = getNMirrorsInitialized(entityManager)
+    //
+    //    println("Checking that all Mains, Mirrors have been initialized...")
+    //    assert(nMainsInitialized == nMains)
+    //    assert(nMirrorsInitialized == nMirrors)
+
+    // after initialization, each partition coordinator should broadcast its location to its mains
+
+
+    //    if (args.isEmpty) {
+    //      val shardPorts = ArrayBuffer[Int](25252, 25253, 25254, 25255)
+    //      startup("domainListener", shardPorts.head - 1, partitionMap, png, -1)
+    //
+    //      var partitionId: Int = 0;
+    //
+    //      for (shardPort <- shardPorts) {
+    //        partitionMap(partitionId) = shardPort
+    //        startup("shard", shardPort, partitionMap, png, partitionId)
+    //        partitionId += 1
+    //      }
+    //
+    //      startup("front", shardPorts.last + numberOfShards + 1, partitionMap, png, -1)
+    //    } else {
+    //      require(args.size == 2, "Usage: role port")
+    //      startup(args(0), args(1).toInt, partitionMap, png, -1)
+    //    }
 
 
   }
@@ -189,8 +166,13 @@ object ClusterShardingApp {
     val config = ConfigFactory
       .parseString(
         s"""
-      akka.remote.artery.canonical.port=$port
+      akka.remote.artery.canonical.port = $port
       akka.cluster.roles = [$role]
+      akka.cluster.seed-nodes = [
+        "akka://ClusterSystem@127.0.0.1:25251"
+      ]
+      akka.cluster.role.shard.min-nr-of-members = $numberOfShards
+      akka.cluster.role.partitionCoordinator.min-nr-of-members = $numberOfShards
       """)
       .withFallback(ConfigFactory.load("cluster"))
     config
@@ -220,7 +202,7 @@ object ClusterShardingApp {
     if (role == "domainListener") {
       println(s"Running ${role} on ${port}")
       // enable ClusterMemberEventListener for logging purposes
-      ActorSystem(ClusterMemberEventListener(nodesUp), "ClusterSystem", config)
+      ActorSystem(ClusterMemberEventListener(nodesUp, nNodes), "ClusterSystem", config)
     } else {
 
       // create an entity manager and partitionCoordinator for this partition
@@ -253,12 +235,13 @@ object ClusterShardingApp {
         println(partitionMap)
         assert(nMainsInitialized == nMains)
         assert(nMirrorsInitialized == nMirrors)
+
         // after initialization, each partition coordinator should broadcast its location to its mains
-        entityManager ! EntityManager.findPC()
+//        entityManager ! EntityManager.askPCRefFromReceptionist()
 
       }
-//      println("broadcasting location...")
-//      partitionCoordinator ! PartitionCoordinator.BroadcastLocation()
+      //      println("broadcasting location...")
+      //      partitionCoordinator ! PartitionCoordinator.BroadcastLocation()
 
 
       //      if (role == "front") {
