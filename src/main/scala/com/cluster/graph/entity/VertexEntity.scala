@@ -1,19 +1,18 @@
 package com.cluster.graph.entity
 
 import scala.concurrent.duration._
+import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 import akka.actor.typed.{ActorRef, Behavior}
-import akka.actor.typed.scaladsl.{Behaviors, AbstractBehavior, ActorContext}
+import akka.actor.typed.scaladsl.Behaviors
 import akka.cluster.sharding.typed.scaladsl.{
   ClusterSharding,
   EntityContext,
   EntityTypeKey,
-  EntityRef
 }
 import com.CborSerializable
-import scala.collection.mutable.ArrayBuffer
 import com.algorithm.LocalMaximaColouring
 import com.algorithm.Colour
-import scala.collection.mutable
 
 object VertexEntity {
   // Hard coded for now
@@ -36,13 +35,15 @@ object VertexEntity {
   case class Begin(stepNum: Int) extends VertexEntity.Command
   case object End extends VertexEntity.Command
   final case class NeighbourMessage(stepNum: Int, edgeVal: Option[EdgeValT],  msg: Option[MessageT]) extends VertexEntity.Command
+  // final case class NullNeighbourMessage(stepNum: Int) extends VertexEntity.Command
 
   // Orchestration
   final case class Initialize(
       vertexId: Int,
       partitionId: Int,
       neighbors: ArrayBuffer[EntityId],
-      mirrors: ArrayBuffer[EntityId]
+      mirrors: ArrayBuffer[EntityId],
+      partitionCoordinator: ActorRef[MainEntity.DummyPCCommand],
   ) extends VertexEntity.Command
 
   // GAS
@@ -52,7 +53,8 @@ object VertexEntity {
   final case class InitializeMirror(
       vertexId: Int,
       partitionId: Int,
-      main: EntityId
+      main: EntityId,
+      neighs: ArrayBuffer[EntityId]
   ) extends VertexEntity.Command
 
   // GAS
@@ -64,53 +66,51 @@ object VertexEntity {
   case object EchoValue extends VertexEntity.Command
   case class SubTtl(entityId: String, ttl: Int) extends VertexEntity.Response
 
-  val MAIN_ENTITY = MainEntity.getClass().toString()
-  val MIRROR_ENTITY = MirrorEntity.getClass().toString()
-
-  def getEntityClass(entityId: String): String = {
-    entityId.split("_").head
-  }
-
   def apply(
       nodeAddress: String,
       entityContext: EntityContext[VertexEntity.Command]
   ): Behavior[VertexEntity.Command] = {
     // TODO HACK to enable polymorphism to work together with sharding entityType. Otherwise shard will only use single type
-    if (getEntityClass(entityContext.entityId) == MAIN_ENTITY)
-      Behaviors.setup(ctx => new MainEntity(ctx, nodeAddress, entityContext))
-    else
-      Behaviors.setup(ctx => new MirrorEntity(ctx, nodeAddress, entityContext))
+    VertexEntityType.withName(EntityId.getTypeFromString(entityContext.entityId)) match {
+      case VertexEntityType.Main =>
+        Behaviors.setup(ctx => new MainEntity(ctx, nodeAddress, entityContext))
+      case VertexEntityType.Mirror =>
+        Behaviors.setup(ctx => new MirrorEntity(ctx, nodeAddress, entityContext))
+    }
   }
 
 }
 
 trait VertexEntity {
+  import VertexEntity._
+  
+  // Vertex Characteristics/Topology
   var vertexId: Int = 0
   var partitionId: Short = 0
-  var value: Int
-
-  import VertexEntity._
-
   var partitionInDegree: Int = 0 // TODO need to get this
   var neighbors: ArrayBuffer[EntityId] = ArrayBuffer()
+  // TODO edgeVal perhaps part of neighbours list (tuple of neigh,edgeVal). And have default value, from Vertex program?
 
+  // Dynamic Computation Values
   val summedTotal: mutable.Map[SuperStep, AccumulatorT] = new mutable.HashMap()
   val neighbourCounter: mutable.Map[SuperStep, Int] = new mutable.HashMap()
+  var value: Int
 
   def ctxLog(event: String): Unit
 
   // Check if ready to perform role in the apply phase, then begin if ready
   def applyIfReady(stepNum: SuperStep): Unit
 
-  def localScatter(stepNum: SuperStep, oldValue: VertexValT, newValue: VertexValT): Unit = {
+  def localScatter(stepNum: SuperStep, oldValue: VertexValT, newValue: VertexValT, shardingRef: ClusterSharding): Unit = {
     val msgOption = vertexProgram.scatter(vertexId, oldValue, newValue)
     
     for(neighbor <- neighbors) {
       val cmd = msgOption match {
         case None => NeighbourMessage(stepNum + 1, None, None)
-        case Some(msg) => NeighbourMessage(stepNum + 1, Some(0), Some(msg)) // TODO 0 edgeVal for now, we need to implement these
+        case Some(msg) => NeighbourMessage(stepNum + 1, Some(0), Some(msg)) // TODO 0 edgeVal for now, we need to implement these. Depends on neighbor!
       }
-      // TODO send cmd to neighbour
+      val neighbourRef = shardingRef.entityRefFor(neighbor.getTypeKey(), neighbor.toString())
+      neighbourRef ! cmd
     }
   }
 
@@ -119,7 +119,7 @@ trait VertexEntity {
         ctxLog("Received neighbour msg " + msg)
         (edgeVal, msg) match {
           case (None, None) => {
-            
+            // nothing
           }
           case (Some(edgeVal), Some(msg)) => {
             val gatheredValue = vertexProgram.gather(edgeVal, msg)
@@ -137,4 +137,11 @@ trait VertexEntity {
         Behaviors.same
       }
   }
+}
+
+// Types of VertexEntities available in shard // TODO Part of HACK, extra coupling
+object VertexEntityType extends Enumeration {
+  type VertexEntityType = Value
+  val Main = Value("Main")
+  val Mirror = Value("Mirror")
 }

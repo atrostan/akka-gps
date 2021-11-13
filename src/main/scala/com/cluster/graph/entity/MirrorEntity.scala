@@ -17,13 +17,12 @@ class MirrorEntity(
     entityContext: EntityContext[VertexEntity.Command]
 ) extends AbstractBehavior[VertexEntity.Command](ctx)
     with VertexEntity {
-  import MirrorEntity._
 
   private var main: EntityId = null
 
   var value = 0 // Counter TEST ONLY
 
-  // In order for vertices to be able to send messages, they need to sharding.entityRefFor by entity id
+  // In order for vertices find refs for messages, they need to sharding.entityRefFor by entity id
   val sharding = ClusterSharding(ctx.system)
 
   override def ctxLog(event: String): Unit = {
@@ -39,29 +38,30 @@ class MirrorEntity(
       msg: VertexEntity.Command
   ): Behavior[VertexEntity.Command] = {
     msg match {
-      case InitializeMirror(vid, pid, m) =>
+      case InitializeMirror(vid, pid, m, neighs) =>
         ctxLog("Initializing mirror")
 
         vertexId = vid
         partitionId = pid.toShort
         main = m
+        neighbors = neighs
         Behaviors.same
 
       // GAS Actions
-      case VertexEntity.Begin(n) =>
+      case VertexEntity.Begin(stepNum) =>
         ctxLog("Beginning compute")
         value += 1
         Behaviors.same
       case VertexEntity.End =>
         ctxLog("Ordered to stop " + msg)
-        // TODO Implement
+        // TODO Needed?
         Behaviors.same
 
       case c: VertexEntity.NeighbourMessage => reactToNeighbourMessage(c)
 
       case ApplyResult(stepNum, oldVal, newVal) => {
         ctxLog("Received apply value from Main " + newVal)
-        // TODO Implement
+        localScatter(stepNum, oldVal, newVal, sharding)
         Behaviors.same
       }
 
@@ -92,9 +92,10 @@ class MirrorEntity(
   }
 
   override def applyIfReady(stepNum: SuperStep): Unit = {
-    if(neighbourCounter(stepNum) == partitionInDegree) {
+    if (neighbourCounter(stepNum) == partitionInDegree) {
       val cmd = MirrorTotal(stepNum, summedTotal.get(stepNum))
-      // TODO send cmd to main
+      val mainRef = sharding.entityRefFor(MainEntity.TypeKey, main.toString())
+      mainRef ! cmd
     }
   }
 }

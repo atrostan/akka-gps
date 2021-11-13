@@ -18,14 +18,11 @@ object EntityManager {
   sealed trait Command
 
   case class Initialize(
-      entityClass: String,
+      entityType: String,
       vertexId: Int,
       partitionId: Int,
       neighbors: ArrayBuffer[EntityId]
   ) extends Command
-
-  // GAS
-  case class TerminationVote(stepNum: Int) extends Command
 
   // Counter TEST ONLY
   case class AddOne(entityClass: String, vertexId: Int, partitionId: Int) extends Command
@@ -75,19 +72,20 @@ object EntityManager {
       // initialize all mirrors of main // TODO Review main check is needed anymore
       if (isMain(eid)) {
         val mirrors = mainArray(eid.vertexId).mirrors.map(m =>
-          new EntityId(MirrorEntity.getClass.toString(), m.id, m.partition.id)
+          new EntityId(VertexEntityType.Mirror.toString(), m.id, m.partition.id)
         )
         entityRef ! VertexEntity.Initialize(
           eid.vertexId,
           eid.partitionId,
           neighbors,
-          mirrors
+          mirrors,
+          null // TODO Change to PC
         )
         // val mirrorEntityRefs = mirrors.map(mid => sharding.entityRefFor(VertexEntity.TypeKey, mid.toString))
         ctx.log.info("Initializing all mirrors:{}", mirrors.toString)
         for (m <- mirrors) {
           val eRef = sharding.entityRefFor(VertexEntity.TypeKey, m.toString)
-          eRef ! VertexEntity.InitializeMirror(m.vertexId, m.partitionId, eid)
+          eRef ! VertexEntity.InitializeMirror(m.vertexId, m.partitionId, eid, null) // TODO Neighbors for each mirror
         }
       }
     }
@@ -101,7 +99,7 @@ object EntityManager {
       // initialize all mirrors of main
       if (isMain(eid)) {
         val mirrors = mainArray(eid.vertexId).mirrors.map(m =>
-          new EntityId(MirrorEntity.getClass.toString(), m.id, m.partition.id)
+          new EntityId(VertexEntityType.Mirror.toString(), m.id, m.partition.id)
         )
         val mirrorEntityRefs =
           mirrors.map(mid => sharding.entityRefFor(VertexEntity.TypeKey, mid.toString))
@@ -110,18 +108,19 @@ object EntityManager {
     }
 
     Behaviors.receiveMessage[Command] {
-      case Initialize(eCl, vid, pid, neighbors) =>
-        val eid = new EntityId(eCl, vid, pid)
+      case Initialize(eType, vid, pid, neighbors) =>
+        val eid = new EntityId(eType, vid, pid)
         initMainAndMirrors(eid, neighbors)
         Behaviors.same
 
-      case AddOne(eCl, vid, pid) =>
-        val eid = new EntityId(eCl, vid, pid)
+      // Counter
+      case AddOne(eType, vid, pid) =>
+        val eid = new EntityId(eType, vid, pid)
         // increment all mirrors of myself
         tellMainAndMirrors(VertexEntity.Increment, eid)
         Behaviors.same
-      case GetSum(eCl, vid, pid) =>
-        val eid = new EntityId(eCl, vid, pid)
+      case GetSum(eType, vid, pid) =>
+        val eid = new EntityId(eType, vid, pid)
         val entityRef: EntityRef[VertexEntity.Command] =
           sharding.entityRefFor(VertexEntity.TypeKey, eid.toString)
         entityRef ! VertexEntity.GetValue(counterRef)
@@ -134,6 +133,7 @@ object EntityManager {
             ctx.log.info("***********************{} total: {} ", eid, subttl)
         }
         Behaviors.same
+
       case _ =>
         ctx.log.info("Unknown behaviour for entity manager")
         Behaviors.same
