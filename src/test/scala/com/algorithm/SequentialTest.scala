@@ -20,20 +20,6 @@ class SequentialTest extends FunSuite with Matchers {
       2~>3 % 1,
       3~>4 % 6
     )
-    val states = Map(
-      g.Node(0) -> Integer.MAX_VALUE,
-      g.Node(1) -> Integer.MAX_VALUE,
-      g.Node(2) -> Integer.MAX_VALUE,
-      g.Node(3) -> Integer.MAX_VALUE,
-      g.Node(4) -> Integer.MAX_VALUE
-    )
-    val activeMap = Map(
-      g.Node(0) -> true,
-      g.Node(1) -> true,
-      g.Node(2) -> true,
-      g.Node(3) -> true,
-      g.Node(4) -> true
-    )
     val distances = Map(
       g.Node(0) -> 0,
       g.Node(1) -> 2,
@@ -41,7 +27,7 @@ class SequentialTest extends FunSuite with Matchers {
       g.Node(3) -> 5,
       g.Node(4) -> 8
     )
-    val results = SequentialRun(SSSP, g)(states, activeMap)
+    val results = SequentialRun(SSSP, g)
     results should be (distances)
   }
 
@@ -60,26 +46,6 @@ class SequentialTest extends FunSuite with Matchers {
       6~>7 % 1000,
       7~>2 % 1000
     )
-    val states = ListMap(
-      g.Node(0) -> Integer.MAX_VALUE,
-      g.Node(1) -> Integer.MAX_VALUE,
-      g.Node(2) -> Integer.MAX_VALUE,
-      g.Node(3) -> Integer.MAX_VALUE,
-      g.Node(4) -> Integer.MAX_VALUE,
-      g.Node(5) -> Integer.MAX_VALUE,
-      g.Node(6) -> Integer.MAX_VALUE,
-      g.Node(7) -> Integer.MAX_VALUE,
-    )
-    val activeMap = Map(
-      g.Node(0) -> true,
-      g.Node(1) -> true,
-      g.Node(2) -> true,
-      g.Node(3) -> true,
-      g.Node(4) -> true,
-      g.Node(5) -> true,
-      g.Node(6) -> true,
-      g.Node(7) -> true,
-    )
     val distances = ListMap(
       g.Node(0) -> 0,
       g.Node(1) -> 10,
@@ -90,7 +56,7 @@ class SequentialTest extends FunSuite with Matchers {
       g.Node(6) -> 1012,
       g.Node(7) -> 2012
     )
-    val results = SequentialRun(SSSP, g)(states, activeMap)
+    val results = SequentialRun(SSSP, g)
     results should be (distances)
   }
 
@@ -109,8 +75,6 @@ class SequentialTest extends FunSuite with Matchers {
       4~>3 % 1,
       5~>3 % 1,
     )
-    val states: Map[g.NodeT, Option[Colour]] = g.nodes.map(v => (v, None)).toMap
-    val activeMap = g.nodes.map(v => (v, true)).toMap
     val finalColours = ListMap(
       g.Node(1) -> Some(Colour(3)),
       g.Node(2) -> Some(Colour(2)),
@@ -118,7 +82,8 @@ class SequentialTest extends FunSuite with Matchers {
       g.Node(4) -> Some(Colour(0)),
       g.Node(5) -> Some(Colour(0)),
     )
-    val results = SequentialRun(LocalMaximaColouring, g)(states, activeMap)
+    val results = SequentialRun(LocalMaximaColouring, g)
     results should be (finalColours)
   }
+
 }

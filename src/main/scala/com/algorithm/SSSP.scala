@@ -31,4 +31,8 @@ object SSSP extends VertexProgram[Int, Int, Int, Int, Int] {
   }
 
   override def voteToHalt(oldVal: Int, newVal: Int): Boolean = true
+
+  override val defaultActivationStatus: Boolean = true
+
+  override val defaultVertexValue: Int = Integer.MAX_VALUE
 }

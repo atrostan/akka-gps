@@ -6,14 +6,13 @@ import scalax.collection.GraphPredef._, scalax.collection.GraphEdge._
 import scalax.collection.edge.WDiEdge
 
 object SequentialRun {
-  def apply[VertexIdT, MessageT, AccumulatorT, VertexValT](vertexProgram: VertexProgram[VertexIdT, Int, MessageT, AccumulatorT, VertexValT], graph: Graph[VertexIdT, WDiEdge])
-    (initialStates: Map[graph.NodeT, VertexValT], initialActiveMap: Map[graph.NodeT, Boolean]): Map[graph.NodeT, VertexValT] = {
+  def apply[VertexIdT, MessageT, AccumulatorT, VertexValT](vertexProgram: VertexProgram[VertexIdT, Int, MessageT, AccumulatorT, VertexValT], graph: Graph[VertexIdT, WDiEdge]): Map[graph.NodeT, VertexValT] = {
 
     type Vertex = graph.NodeT
     // var vertices: Seq[Int] = graph.nodes.toSeq.mzap({x:graph.NodeT => x.value})
     var vertices = graph.nodes
-    var states = initialStates
-    var activeMap = initialActiveMap
+    var states = vertices.map(v => (v -> vertexProgram.defaultVertexValue)).toMap
+    var activeMap = vertices.map(v => (v -> vertexProgram.defaultActivationStatus)).toMap
 
     type Mailbox = Map[WDiEdge[Vertex], MessageT]
 
