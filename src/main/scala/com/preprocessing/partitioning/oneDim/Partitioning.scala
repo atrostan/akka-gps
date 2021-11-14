@@ -18,7 +18,7 @@ class Partitioning(P: Int, n: Int, m: Int) {
     // http://www.vldb.org/pvldb/vol12/p321-gill.pdf: "average number of proxies per node"
     // TODO; unsure if to include mains in the calculation; currently exclude
     // i.e. (all mirrors + all mains) / nNodes
-     mainArray.map(m => m.mirrors.size).sum.toFloat / nNodes
+    mainArray.map(m => m.mirrors.size).sum.toFloat / nNodes
   }
 
   def partitionEdges(es: ArrayBuffer[Edge]): Unit = {
@@ -36,15 +36,6 @@ class Partitioning(P: Int, n: Int, m: Int) {
       }
     }
   }
-
-  // in 1D partitioning by source, a vertex v's main copy will be stored in the
-  // partition id p_i,
-  // where, v.id % nPartitions == p_i
-  // i.e. store a vertex in the partition with all of its outgoing edges
-  // 1d edge partitioning ~=? vertex partitioning
-  // TODO; parameterize partitioning by source/destination
-  def getMainPartition(v: Vertex): Partition = get(v.id % nPartitions)
-  def get(pid: Int): Partition = partitions(pid)
 
   def assign(e: Edge): Unit = {
     val src: Vertex = e.source
@@ -89,6 +80,16 @@ class Partitioning(P: Int, n: Int, m: Int) {
       }
     }
   }
+
+  // in 1D partitioning by source, a vertex v's main copy will be stored in the
+  // partition id p_i,
+  // where, v.id % nPartitions == p_i
+  // i.e. store a vertex in the partition with all of its outgoing edges
+  // 1d edge partitioning ~=? vertex partitioning
+  // TODO; parameterize partitioning by source/destination
+  def getMainPartition(v: Vertex): Partition = get(v.id % nPartitions)
+
+  def get(pid: Int): Partition = partitions(pid)
 
   override def toString(): String = {
     var s: String = ""

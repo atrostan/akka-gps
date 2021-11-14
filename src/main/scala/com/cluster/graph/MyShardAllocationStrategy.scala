@@ -9,9 +9,9 @@ import scala.concurrent.Future
 
 //https://github.com/haghard/safe-chat/blob/1a961ccb228c3a2ceb63b86ff79a327256040201/src/main/scala/com/safechat/actors/DynamicLeastShardAllocationStrategy.scala
 class MyShardAllocationStrategy(
-                                 partitionMap: collection.mutable.Map[Int, Int]
-                               ) extends ShardAllocationStrategy
-  with Serializable {
+    partitionMap: collection.mutable.Map[Int, Int]
+) extends ShardAllocationStrategy
+    with Serializable {
 
   private[this] final val emptyRebalanceResult = Future.successful(Set.empty[ShardId])
 
@@ -22,10 +22,10 @@ class MyShardAllocationStrategy(
   // private val partitionShardMap = collection.mutable.Map[ShardId, Int]()
 
   override def allocateShard(
-                              requester: ActorRef,
-                              shardId: ShardId,
-                              currentShardAllocations: Map[ActorRef, immutable.IndexedSeq[ShardId]]
-                            ): Future[ActorRef] = {
+      requester: ActorRef,
+      shardId: ShardId,
+      currentShardAllocations: Map[ActorRef, immutable.IndexedSeq[ShardId]]
+  ): Future[ActorRef] = {
     // use partitionMap to assign shards to nodes (ActorRefs)
     if (shardMap.isEmpty) {
       // first call to allocate shard; create a set of the Shard ActorRefs
@@ -65,9 +65,9 @@ class MyShardAllocationStrategy(
   }
 
   override def rebalance(
-                          currentShardAllocations: Map[ActorRef, immutable.IndexedSeq[ShardId]],
-                          rebalanceInProgress: Set[ShardId]
-                        ): Future[Set[ShardId]] = {
+      currentShardAllocations: Map[ActorRef, immutable.IndexedSeq[ShardId]],
+      rebalanceInProgress: Set[ShardId]
+  ): Future[Set[ShardId]] = {
     emptyRebalanceResult // no need to rebalance; static partitioning
   }
 }

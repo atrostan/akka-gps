@@ -1,13 +1,16 @@
 package com.algorithm
 
-import scalax.collection.edge.Implicits._
-import scalax.collection.Graph // or scalax.collection.mutable.Graph
-import scalax.collection.GraphPredef._, scalax.collection.GraphEdge._
+import scalax.collection.Graph
 import scalax.collection.edge.WDiEdge
 
 object SequentialRun {
-  def apply[VertexIdT, MessageT, AccumulatorT, VertexValT](vertexProgram: VertexProgram[VertexIdT, Int, MessageT, AccumulatorT, VertexValT], graph: Graph[VertexIdT, WDiEdge])
-    (initialStates: Map[graph.NodeT, VertexValT], initialActiveMap: Map[graph.NodeT, Boolean]): Map[graph.NodeT, VertexValT] = {
+  def apply[VertexIdT, MessageT, AccumulatorT, VertexValT](
+      vertexProgram: VertexProgram[VertexIdT, Int, MessageT, AccumulatorT, VertexValT],
+      graph: Graph[VertexIdT, WDiEdge]
+  )(
+      initialStates: Map[graph.NodeT, VertexValT],
+      initialActiveMap: Map[graph.NodeT, Boolean]
+  ): Map[graph.NodeT, VertexValT] = {
 
     type Vertex = graph.NodeT
     // var vertices: Seq[Int] = graph.nodes.toSeq.mzap({x:graph.NodeT => x.value})
@@ -30,18 +33,18 @@ object SequentialRun {
     }
     def outEdges(src: Vertex): Iterable[graph.EdgeT] = {
       graph.edges.filter(edge => edge._1 == src)
-    } 
+    }
 
     var progressFlag = true
 
-    while(progressFlag) {
+    while (progressFlag) {
       // Superstep
       superstep += 1
       // println("Superstep: " + superstep)
       // println("States   : " + states)
       // println("Messages : " + currentMailboxes)
       progressFlag = false
-      
+
       // Iterate over vertices
       for {
         vtx <- vertices
@@ -57,7 +60,7 @@ object SequentialRun {
           case (accOption, (edge, msg)) => {
             val gatheredMsg = vertexProgram.gather(edge.weight.toInt, msg)
             accOption match {
-              case None => Some(gatheredMsg)
+              case None           => Some(gatheredMsg)
               case Some(accSoFar) => Some(vertexProgram.sum(accSoFar, gatheredMsg))
             }
           }

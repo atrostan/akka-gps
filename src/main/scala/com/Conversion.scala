@@ -1,11 +1,11 @@
 package com
-import java.nio.charset.StandardCharsets.UTF_8
-
 import akka.actor.typed
 import akka.actor.typed.ActorRefResolver
 import akka.actor.typed.scaladsl.adapter._
 import akka.serialization.Serialization
 import scalapb.TypeMapper
+
+import java.nio.charset.StandardCharsets.UTF_8
 
 // argh
 // https://github.com/akka/akka/issues/27975
@@ -21,6 +21,8 @@ object Conversion {
   implicit def mapper[T]: TypeMapper[String, ActorRef[T]] =
     TypeMapper[String, ActorRef[T]](resolver.resolveActorRef)(serialize)
 
-  def serialize[T](ref: ActorRef[T]) = new String(resolver.toSerializationFormat(ref).getBytes(UTF_8), UTF_8)
   def deserialize[T](str: String) = resolver.resolveActorRef[T](str)
+  def serialize[T](ref: ActorRef[T]) =
+    new String(resolver.toSerializationFormat(ref).getBytes(UTF_8), UTF_8)
+
 }

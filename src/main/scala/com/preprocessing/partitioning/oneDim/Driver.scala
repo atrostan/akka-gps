@@ -1,6 +1,7 @@
 package com.preprocessing.partitioning.oneDim
 
 import com.graph.{Edge, Vertex}
+
 import scala.collection.mutable.ArrayBuffer
 
 object Driver {

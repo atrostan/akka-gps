@@ -1,7 +1,6 @@
 package com.cluster.graph
 
-import akka.cluster.sharding.typed.ShardingMessageExtractor
-import akka.cluster.sharding.typed.ShardingEnvelope
+import akka.cluster.sharding.typed.{ShardingEnvelope, ShardingMessageExtractor}
 
 // TODO Review if this makes sense. Hard to find good examples. See ShardRegion and ShardingMessageExtractor classes.
 // private final class VertexIdExtractor(shards: Int) extends HashCodeMessageExtractor(shards) {

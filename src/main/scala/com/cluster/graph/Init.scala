@@ -1,23 +1,22 @@
 package com.cluster.graph
 
-import akka.actor.typed.{ActorRefResolver, ActorSystem, Scheduler}
 import akka.actor.typed.receptionist.ServiceKey
 import akka.actor.typed.scaladsl.AskPattern.Askable
+import akka.actor.typed.{ActorRef, ActorRefResolver, ActorSystem, Scheduler}
 import akka.cluster.ClusterEvent
 import akka.cluster.sharding.typed.scaladsl.EntityRef
 import akka.util.Timeout
 import com.Typedefs.{GCRef, PCRef}
-import com.cluster.graph.ClusterShardingApp.{partCoordMap, partitionMap}
 import com.cluster.graph.GlobalCoordinator.GlobalCoordinatorKey
 import com.cluster.graph.entity.{EntityId, MainEntity, MirrorEntity, VertexEntity}
 import com.graph.{Edge, Vertex}
 import com.preprocessing.partitioning.oneDim.Partitioning
-import com.typesafe.config.{Config, ConfigFactory}
 
 import java.nio.charset.StandardCharsets
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
+import scala.reflect.ClassTag
 
 object Init {
   val waitTime = 10 seconds
@@ -63,19 +62,13 @@ object Init {
     png
   }
 
-  def initEntityManager(png: Partitioning, config: Config): ActorSystem[EntityManager.Command] = {
-    ActorSystem[EntityManager.Command](
-      EntityManager(partitionMap, png.mainArray),
-      "ClusterSystem", config
-    )
-  }
-
   def blockInitPartitionCoordinator(
-                                     pc: ActorSystem[PartitionCoordinator.Command],
-                                     mains: List[EntityId],
-                                     partitionId: Int
-                                   ): Int = {
-    implicit val scheduler = pc.scheduler
+      pc: ActorRef[PartitionCoordinator.Command],
+      mains: List[EntityId],
+      partitionId: Int,
+      s: Scheduler
+  ): Int = {
+    implicit val scheduler = s
     val future: Future[PartitionCoordinator.InitResponse] = pc.ask(ref =>
       PartitionCoordinator.Initialize(
         mains,
@@ -94,44 +87,13 @@ object Init {
     }
   }
 
-  def initPartitionCoordinator(
-                                partitionId: Int,
-                                port: Int,
-                                png: Partitioning
-                              ): ActorSystem[PartitionCoordinator.Command] = {
-    println(s"pc on port: ${port}")
-    var nPartitionCoordinatorsInitialized = 0
-    // create a partition coordinator
-    val partitionCoordinatorConfig = ConfigFactory
-      .parseString(
-        s"""
-      akka.remote.artery.canonical.port=${port}
-      akka.cluster.roles = [partitionCoordinator]
-      """)
-      .withFallback(ConfigFactory.load("cluster"))
-    if (partitionId > 0) partCoordMap(port) = partitionId
-    val mains = png.mainArray
-      .filter(m => m.partition.id == partitionId)
-      .map(m => new EntityId("Main", m.id, partitionId))
-      .toList
-    println(mains)
-    val pc = ActorSystem[PartitionCoordinator.Command](
-      PartitionCoordinator(mains, partitionId),
-      "ClusterSystem", partitionCoordinatorConfig
-    )
-    nPartitionCoordinatorsInitialized += blockInitPartitionCoordinator(
-      pc, mains, partitionId
-    )
-    println(nPartitionCoordinatorsInitialized)
-    pc
-  }
-
   def getNMainsInitialized(
-                            entityManager: ActorSystem[EntityManager.Command],
-                          ): Int = {
+      entityManager: ActorSystem[EntityManager.Command]
+  ): Int = {
     // check that all mains have been correctly initialized
     implicit val scheduler = entityManager.scheduler
-    val future: Future[EntityManager.NMainsInitResponse] = entityManager.ask(ref => EntityManager.GetNMainsInitialized(ref))
+    val future: Future[EntityManager.NMainsInitResponse] =
+      entityManager.ask(ref => EntityManager.GetNMainsInitialized(ref))
     val result = Await.result(future, waitTime)
     result match {
       case EntityManager.NMainsInitResponse(totalMainsInitialized) =>
@@ -143,13 +105,14 @@ object Init {
   }
 
   def getNMirrorsInitialized(
-                              entityManager: ActorSystem[EntityManager.Command],
-                            ): Int = {
+      entityManager: ActorSystem[EntityManager.Command]
+  ): Int = {
     // check that all mains have been correctly initialized
     //    entityManager ! EntityManager.GetNMainsInitialized()
 
     implicit val scheduler = entityManager.scheduler
-    val future: Future[EntityManager.NMirrorsInitResponse] = entityManager.ask(ref => EntityManager.GetNMirrorsInitialized(ref))
+    val future: Future[EntityManager.NMirrorsInitResponse] =
+      entityManager.ask(ref => EntityManager.GetNMirrorsInitialized(ref))
     val result = Await.result(future, waitTime)
     result match {
       case EntityManager.NMirrorsInitResponse(totalMirrorsInitialized) =>
@@ -163,15 +126,15 @@ object Init {
   // partition coordinator and the number of nodes in the graph
 
   def blockInitGlobalCoordinator(
-                                  gc: ActorSystem[GlobalCoordinator.Command],
-                                  pcRefs: collection.mutable.Map[Int, PCRef],
-                                  nNodes: Int
-                                ): Unit = {
-    implicit val scheduler = gc.scheduler
+      gc: GCRef,
+      sched: Scheduler,
+      pcRefs: collection.mutable.Map[Int, PCRef],
+      nNodes: Int
+  ): Unit = {
+    implicit val scheduler = sched
 
-    val f: Future[GlobalCoordinator.InitResponse] = gc.ask(ref =>
-      GlobalCoordinator.Initialize(pcRefs, nNodes, ref)
-    )
+    val f: Future[GlobalCoordinator.InitResponse] =
+      gc.ask(ref => GlobalCoordinator.Initialize(pcRefs, nNodes, ref))
     val GCInitResponse = Await.result(f, waitTime)
     GCInitResponse match {
       case GlobalCoordinator.InitResponse(message) =>
@@ -181,15 +144,14 @@ object Init {
     }
   }
 
-  /**
-   * Block until the number of cluster members with status UP == nNodes
-   *
-   * @param domainListener
-   */
+  /** Block until the number of cluster members with status UP == nNodes
+    *
+    * @param domainListener
+    */
   def blockUntilAllMembersUp(
-                              domainListener: ActorSystem[ClusterEvent.ClusterDomainEvent],
-                              nNodes: Int
-                            ): Unit = {
+      domainListener: ActorSystem[ClusterEvent.ClusterDomainEvent],
+      nNodes: Int
+  ): Unit = {
     implicit val scheduler = domainListener.scheduler
 
     var flag = true
@@ -210,8 +172,8 @@ object Init {
   }
 
   def blockUntilGlobalCoordinatorRegistered(
-                                             entityManager: ActorSystem[EntityManager.Command]
-                                           ): GCRef = {
+      entityManager: ActorSystem[EntityManager.Command]
+  ): GCRef = {
     implicit val scheduler = entityManager.scheduler
     var flag = true
     var gcRef: GCRef = null
@@ -234,7 +196,8 @@ object Init {
     }
 
     val actorRefResolver = ActorRefResolver(entityManager)
-    val serializedActorRef: Array[Byte]= actorRefResolver.toSerializationFormat(gcRef).getBytes(StandardCharsets.UTF_8)
+    val serializedActorRef: Array[Byte] =
+      actorRefResolver.toSerializationFormat(gcRef).getBytes(StandardCharsets.UTF_8)
 
     val str = new String(serializedActorRef, StandardCharsets.UTF_8)
     println("Serialized global coordinator actor ref", str)
@@ -244,65 +207,71 @@ object Init {
     gcRef
   }
 
-  /**
-   * Block until the number of registered PartitionCoordinators == numberOfShards
-   *
-   * @param entityManager
-   */
-  def blockUntilAllPCsRegistered(
-                                  entityManager: ActorSystem[EntityManager.Command],
-                                  numberOfShards: Int
-                                ): collection.mutable.Map[Int, PCRef] = {
+  /** Block until the number of registered refs == nToRegister
+    *
+    * @param entityManager
+    */
+  def blockUntilAllRefsRegistered[T: ClassTag](
+      entityManager: ActorSystem[EntityManager.Command],
+      idStr: String,
+      nToRegister: Int
+  ): collection.mutable.Map[Int, ActorRef[T]] = {
     implicit val scheduler = entityManager.scheduler
 
     // build a map from partition id to PartitionCoordinator entity ref
-    val pcRefs = collection.mutable.Map[Int, PCRef]()
+    val refs = collection.mutable.Map[Int, ActorRef[T]]()
     var flag = true
 
     while (flag) {
-      var nRegisteredPCs = 0
-      for (pid <- 0 until numberOfShards) {
-        val PartitionCoordinatorKey = ServiceKey[PartitionCoordinator.Command](s"partitionCoordinator${pid}")
-        val f: Future[EntityManager.PCRefResponseFromReceptionist] = entityManager.ask(ref => {
-          EntityManager.askPCRefFromReceptionist(pid, ref)
-        })
-        val PCRefResponseFromReceptionist = Await.result(f, waitTime)
+      var nRegistered = 0
+      for (pid <- 0 until nToRegister) {
 
-        PCRefResponseFromReceptionist match {
-          case EntityManager.PCRefResponseFromReceptionist(listing) =>
-            val set = listing.serviceInstances(PartitionCoordinatorKey)
-            // the partitionCoordinator for this pid has been registered
+        var serviceKey: ServiceKey[T] = null
+        if (nToRegister == 1) {
+          serviceKey = ServiceKey[T](s"$idStr")
+        } else {
+          serviceKey = ServiceKey[T](s"$idStr$pid")
+        }
+
+        val f: Future[EntityManager.RefResponseFromReceptionist] = entityManager.ask(ref => {
+          EntityManager.AskRefFromReceptionist(serviceKey, ref)
+        })
+        val RefResponseFromReceptionist = Await.result(f, waitTime)
+
+        RefResponseFromReceptionist match {
+          case EntityManager.RefResponseFromReceptionist(listing) =>
+            val set = listing.serviceInstances(serviceKey)
+            // the ref for this pid has been registered
             if (set.size == 1) {
-              nRegisteredPCs += 1
-              pcRefs(pid) = set.head
+              nRegistered += 1
+              refs(pid) = set.head
             }
         }
       }
-      // all partition coordinators have been registered and are available through the cluster receptionist
-      if (nRegisteredPCs == numberOfShards) {
+      // all refs have been registered and are available through the cluster receptionist
+      if (nRegistered == nToRegister) {
         flag = false
       }
       Thread.sleep(1000)
     }
-    assert(pcRefs.size == numberOfShards)
-    pcRefs
+    assert(refs.size == nToRegister)
+    refs
   }
 
-  /**
-   * A call to initialize a main vertex. Blocks (Await.result) until the main vertex is initialized
-   *
-   * @param mainERef
-   * @param eid
-   * @param neighbors
-   * @param mirrors
-   */
+  /** A call to initialize a main vertex. Blocks (Await.result) until the main vertex is initialized
+    *
+    * @param mainERef
+    * @param eid
+    * @param neighbors
+    * @param mirrors
+    */
   def blockInitMain(
-                     mainERef: EntityRef[MainEntity.Initialize],
-                     eid: EntityId,
-                     neighbors: ArrayBuffer[EntityId],
-                     mirrors: ArrayBuffer[EntityId],
-                     totalMainsInitialized: Int
-                   ): Int = {
+      mainERef: EntityRef[MainEntity.Initialize],
+      eid: EntityId,
+      neighbors: ArrayBuffer[EntityId],
+      mirrors: ArrayBuffer[EntityId],
+      totalMainsInitialized: Int
+  ): Int = {
     // async call to initialize main
     val future: Future[MainEntity.InitResponse] = mainERef.ask(ref =>
       MainEntity.Initialize(
@@ -311,7 +280,8 @@ object Init {
         neighbors,
         mirrors,
         ref
-      ))
+      )
+    )
     // blocking to wait until main vertex is initialized
     val mainInitResult = Await.result(future, waitTime)
     mainInitResult match {
@@ -323,19 +293,19 @@ object Init {
     }
   }
 
-  /**
-   * A call to initialize a mirror vertex. Blocks (Await.result) until the mirror vertex is initialized
-   *
-   * @param mirrorERef
-   * @param m
-   * @param eid
-   */
+  /** A call to initialize a mirror vertex. Blocks (Await.result) until the mirror vertex is
+    * initialized
+    *
+    * @param mirrorERef
+    * @param m
+    * @param eid
+    */
   def blockInitMirror(
-                       mirrorERef: EntityRef[VertexEntity.Command],
-                       m: EntityId,
-                       eid: EntityId,
-                       totalMirrorsInitialized: Int
-                     ): Int = {
+      mirrorERef: EntityRef[VertexEntity.Command],
+      m: EntityId,
+      eid: EntityId,
+      totalMirrorsInitialized: Int
+  ): Int = {
     val future: Future[MirrorEntity.InitResponse] = mirrorERef.ask(ref =>
       MirrorEntity.InitializeMirror(
         m.vertexId,
@@ -369,4 +339,3 @@ object Init {
 
   }
 }
-

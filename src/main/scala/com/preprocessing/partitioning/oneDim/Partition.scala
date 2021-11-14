@@ -5,7 +5,7 @@ import com.graph.Edge
 
 import scala.collection.mutable.ArrayBuffer
 
-class Partition(pid: Int){
+class Partition(pid: Int) {
 
   val id: Int = pid
   var edges: ArrayBuffer[Edge] = ArrayBuffer[Edge]() // the subgraph in this partition

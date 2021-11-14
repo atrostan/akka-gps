@@ -1,28 +1,26 @@
 package com.cluster.graph
 
-import akka.actor.typed.scaladsl.AbstractBehavior
-import akka.actor.typed.{ActorRef, ActorRefResolver, Behavior}
 import akka.actor.typed.receptionist.{Receptionist, ServiceKey}
 import akka.actor.typed.scaladsl.AskPattern.Askable
-import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
+import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
+import akka.actor.typed.{ActorRef, ActorRefResolver, Behavior}
 import akka.cluster.sharding.typed.scaladsl.ClusterSharding
 import akka.cluster.typed.Cluster
 import akka.util.Timeout
-import com.{CborSerializable, Conversion}
+import com.CborSerializable
 import com.Typedefs.{GCRef, PCRef}
 
-import scala.concurrent.{Await, Future}
 import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, Future}
 
+/** The central coordinator monitors the state of every vertex in the graph (via the
+  * partitionCoordinator), to ensure all vertices are performing the computation for the same
+  * superstep. Vertices continue to the next superstep only when they receive a message from the
+  * central coordinator (via the partitionCoordinator) that they may do so
+  */
 
-/**
- * The central coordinator monitors the state of every vertex in the graph (via the partitionCoordinator), to ensure all vertices are performing the computation for the same superstep.
- * Vertices continue to the next superstep only when they receive a message
- * from the central coordinator (via the partitionCoordinator) that they may
- * do so
- */
-
-class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command]) extends AbstractBehavior[GlobalCoordinator.Command](ctx) {
+class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
+    extends AbstractBehavior[GlobalCoordinator.Command](ctx) {
 
   import GlobalCoordinator._
 
@@ -34,23 +32,21 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command]) extends Ab
   // In order for vertices to be able to send messages, they need to sharding.entityRefFor by entity id
   val cluster = Cluster(ctx.system)
   val sharding = ClusterSharding(ctx.system)
-
+  val pcRefs = collection.mutable.Map[Int, PCRef]()
   // counts the number of vertices in this partition that have finished their computation for a superstep
   var doneCounter = collection.mutable.Map[Int, Int]().withDefaultValue(0)
   // counts the number of vertices in this partition that have voted to terminate their computation
   var voteCounter = collection.mutable.Map[Int, Int]().withDefaultValue(0)
-
-  val pcs = collection.mutable.Map[Int, PCRef]()
   var nPartitions = -1
   var numNodes = -1
 
   override def onMessage(msg: GlobalCoordinator.Command): Behavior[GlobalCoordinator.Command] = {
     msg match {
 
-      case Initialize(pcRefs, ns, replyTo) =>
-        pcs ++= pcRefs
+      case Initialize(pcs, ns, replyTo) =>
+        pcRefs ++= pcs
         numNodes = ns
-        nPartitions = pcs.size
+        nPartitions = pcRefs.size
         replyTo ! InitResponse("Initialized the Global Coordinator")
         Behaviors.same
 
@@ -61,7 +57,7 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command]) extends Ab
 //        println("str", str)
 //        println("deserialized", deserialized)
 //        println("deserialized == gcRef", deserialized == gcRef)
-        for ((pid, pcRef) <- pcs) {
+        for ((pid, pcRef) <- pcRefs) {
           val f: Future[PartitionCoordinator.UpdateGCResponse] = pcRef.ask(ref => {
             PartitionCoordinator.UpdateGC(gcRef, ref)
           })
@@ -79,7 +75,7 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command]) extends Ab
         Behaviors.same
 
       case GetPCRefs(replyTo) =>
-        replyTo ! GetPCRefsResponse(pcs)
+        replyTo ! GetPCRefsResponse(pcRefs)
         Behaviors.same
 
     }
@@ -88,25 +84,8 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command]) extends Ab
 
 object GlobalCoordinator {
 
-  trait Command extends CborSerializable
-
-  sealed trait Reply extends CborSerializable
-
-  final case class GetPCRefs(replyTo: ActorRef[GetPCRefsResponse]) extends Command
-  case class GetPCRefsResponse(pcRefs: collection.mutable.Map[Int, PCRef]) extends Reply
-
-  final case class BroadcastRef(gcRef: GCRef,replyTo: ActorRef[BroadcastRefResponse]) extends Command
-  case class BroadcastRefResponse(message: String) extends Reply
-
-
-  final case class Initialize(
-                               pcs: collection.mutable.Map[Int, PCRef],
-                               nPartitions: Int,
-                               replyTo: ActorRef[InitResponse]
-                             ) extends Command
-
-  case class InitResponse(message: String) extends Reply
   val GlobalCoordinatorKey = ServiceKey[GlobalCoordinator.Command](s"globalCoordinator")
+
   def apply(): Behavior[GlobalCoordinator.Command] = {
     Behaviors.setup(ctx => {
 
@@ -114,4 +93,25 @@ object GlobalCoordinator {
       new GlobalCoordinator(ctx)
     })
   }
+
+  sealed trait Response extends CborSerializable
+
+  trait Command extends CborSerializable
+
+  final case class GetPCRefs(replyTo: ActorRef[GetPCRefsResponse]) extends Command
+
+  case class GetPCRefsResponse(pcRefs: collection.mutable.Map[Int, PCRef]) extends Response
+
+  final case class BroadcastRef(gcRef: GCRef, replyTo: ActorRef[BroadcastRefResponse])
+      extends Command
+
+  case class BroadcastRefResponse(message: String) extends Response
+
+  final case class Initialize(
+      pcs: collection.mutable.Map[Int, PCRef],
+      nPartitions: Int,
+      replyTo: ActorRef[InitResponse]
+  ) extends Command
+
+  case class InitResponse(message: String) extends Response
 }
