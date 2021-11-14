@@ -15,8 +15,8 @@ object SequentialRun {
     type Vertex = graph.NodeT
     // var vertices: Seq[Int] = graph.nodes.toSeq.mzap({x:graph.NodeT => x.value})
     var vertices = graph.nodes
-    var states = initialStates
-    var activeMap = initialActiveMap
+    var states = vertices.map(v => (v -> vertexProgram.defaultVertexValue)).toMap
+    var activeMap = vertices.map(v => (v -> vertexProgram.defaultActivationStatus)).toMap
 
     type Mailbox = Map[WDiEdge[Vertex], MessageT]
 

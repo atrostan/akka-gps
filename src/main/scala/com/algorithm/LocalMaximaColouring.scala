@@ -1,7 +1,5 @@
 package com.algorithm
 
-sealed trait LMCMessage
-
 case class Colour(num: Int) {
   require(num >= 0)
 }
@@ -61,4 +59,7 @@ object LocalMaximaColouring extends VertexProgram[Int, Int, Int, Set[Int], Optio
     }
   }
 
+  override val defaultVertexValue: Option[Colour] = None
+
+  override val defaultActivationStatus: Boolean = true
 }
