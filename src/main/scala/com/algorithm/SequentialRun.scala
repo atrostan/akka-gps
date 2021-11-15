@@ -1,15 +1,19 @@
 package com.algorithm
 
-import scalax.collection.edge.Implicits._
-import scalax.collection.Graph // or scalax.collection.mutable.Graph
-import scalax.collection.GraphPredef._, scalax.collection.GraphEdge._
+import scalax.collection.Graph
 import scalax.collection.edge.WDiEdge
 import com.algorithm.VertexProgram.Outwards
 import com.algorithm.VertexProgram.Inwards
 import com.algorithm.VertexProgram.Bidirectional
 
 object SequentialRun {
-  def apply[VertexIdT, MessageT, AccumulatorT, VertexValT](vertexProgram: VertexProgram[VertexIdT, Int, MessageT, AccumulatorT, VertexValT], graph: Graph[VertexIdT, WDiEdge]): Map[graph.NodeT, VertexValT] = {
+  def apply[VertexIdT, MessageT, AccumulatorT, VertexValT](
+      vertexProgram: VertexProgram[VertexIdT, Int, MessageT, AccumulatorT, VertexValT],
+      graph: Graph[VertexIdT, WDiEdge]
+  )(
+      initialStates: Map[graph.NodeT, VertexValT],
+      initialActiveMap: Map[graph.NodeT, Boolean]
+  ): Map[graph.NodeT, VertexValT] = {
 
     type Vertex = graph.NodeT
     // var vertices: Seq[Int] = graph.nodes.toSeq.mzap({x:graph.NodeT => x.value})
@@ -30,6 +34,7 @@ object SequentialRun {
     def sendMessage(dest: Vertex, edge: graph.EdgeT, msg: MessageT): Unit = {
       nextMailboxes = nextMailboxes.updated(dest, nextMailboxes(dest).updated(edge, msg))
     }
+    
     def relevantEdges(v: Vertex): Iterable[(graph.NodeT, graph.EdgeT)] = {
       val outEdges = graph.edges.filter(edge => edge._1 == v).map(edge => (edge._2, edge))
       val inEdges = graph.edges.filter(edge => edge._2 == v).map(edge => (edge._1, edge))
@@ -42,14 +47,14 @@ object SequentialRun {
 
     var progressFlag = true
 
-    while(progressFlag) {
+    while (progressFlag) {
       // Superstep
       superstep += 1
       // println("Superstep: " + superstep)
       // println("States   : " + states)
       // println("Messages : " + currentMailboxes)
       progressFlag = false
-      
+
       // Iterate over vertices
       for {
         vtx <- vertices
@@ -65,7 +70,7 @@ object SequentialRun {
           case (accOption, (edge, msg)) => {
             val gatheredMsg = vertexProgram.gather(edge.weight.toInt, msg)
             accOption match {
-              case None => Some(gatheredMsg)
+              case None           => Some(gatheredMsg)
               case Some(accSoFar) => Some(vertexProgram.sum(accSoFar, gatheredMsg))
             }
           }
