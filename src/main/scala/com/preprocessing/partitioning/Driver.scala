@@ -8,7 +8,9 @@ import org.apache.spark.{SparkConf, SparkContext}
 
 import java.lang.instrument.Instrumentation
 
-// runMain com.preprocessing.partitioning.Driver --nNodes 1005 --nEdges 24929 --inputFilename "src/main/resources/graphs/email-Eu-core/reset/part-00000" --outputDirectoryName "src/main/resources/graphs/email-Eu-core/partitioned/hybrid" --sep " " --partitioner 3 --threshold 100 --numPartitions 4 --partitionBy 0
+// runMain com.preprocessing.partitioning.Driver --nNodes 1005 --nEdges 24929 --inputFilename "src/main/resources/graphs/email-Eu-core/reset/part-00000" --outputDirectoryName "src/main/resources/graphs/email-Eu-core/partitioned" --sep " " --partitioner 3 --threshold 100 --numPartitions 4 --partitionBySource 0
+
+// runMain com.preprocessing.partitioning.Driver --nNodes 8 --nEdges 32 --inputFilename "src/main/resources/graphs/8rmat" --outputDirectoryName "src/main/resources/graphs/8rmat/partitions" --sep " " --partitioner 3 --threshold 100 --numPartitions 4 --partitionBySource 0
 
 object Driver {
 
@@ -28,7 +30,14 @@ object Driver {
     val partitioner = pArgs.partitioner
     val numPartitions = pArgs.numPartitions
     val outdir = pArgs.outputDirectory
-    val partitionBy = pArgs.partitionBy
+    val partitionBySource = pArgs.partitionBy
+    var partitionBySourceDirName = ""
+
+    if (partitionBySource) {
+      partitionBySourceDirName = "bySrc"
+    } else {
+      partitionBySourceDirName = "byDest"
+    }
 
     println("reading edge list...")
     val edgeList = readEdgeList(sc, infile, sep)
@@ -36,20 +45,21 @@ object Driver {
     partitioner match {
       case 1 =>
         println("1D Partitioning")
-        val partitionDir = outdir + "/1d/"
-        createPartitionDir(partitionDir, )
-        val partitioner = new OneDimPartitioner(numPartitions, partitionBy)
+        val partitionDir = outdir + s"/1d/$partitionBySourceDirName/"
+        createPartitionDir(partitionDir, true)
+        val partitioner = new OneDimPartitioner(numPartitions, partitionBySource)
 
 
       case 2 =>
         println("2D Partitioning")
-        val partitionDir = outdir + "/2d/"
-        val partitioner = new TwoDimPartitioner(numPartitions, partitionBy)
+        val partitionDir = outdir + s"/2d/$partitionBySourceDirName/"
+        createPartitionDir(partitionDir, true)
+        val partitioner = new TwoDimPartitioner(numPartitions, partitionBySource)
 
       case 3 =>
         println("Hybrid Partitioning")
         val partitionDir = outdir + "/hybrid/"
-        val partitioner = new HybridCutPartitioner(numPartitions, partitionBy)
+        val partitioner = new HybridCutPartitioner(numPartitions, partitionBySource)
 
         try {
           val flaggedEdgeList = hybridPartitioningPreprocess(edgeList, threshold)

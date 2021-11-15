@@ -1,5 +1,6 @@
 import com.typesafe.sbt.SbtMultiJvm.multiJvmSettings
 import com.typesafe.sbt.SbtMultiJvm.MultiJvmKeys.MultiJvm
+import CommandExample._
 
 name := "akka-gps"
 
@@ -24,6 +25,17 @@ ThisBuild / assemblyMergeStrategy := {
     val oldStrategy = (ThisBuild / assemblyMergeStrategy).value
     oldStrategy(x)
 }
+
+val myRun = taskKey[Unit]("...")
+
+myRun := Def.taskDyn {
+  val appName = name.value
+  Def.task {
+    (Compile / runMain)
+      .toTask(s" com.softwaremill.MyMain $appName")
+      .value
+  }
+}.value
 
 lazy val `akka-gps` = project
   .in(file("."))
@@ -55,10 +67,11 @@ lazy val `akka-gps` = project
     Global / cancelable := false,
     // disable parallel tests
     Test / parallelExecution := false,
-    licenses := Seq(("CC0", url("http://creativecommons.org/publicdomain/zero/1.0")))
+    licenses := Seq(("CC0", url("http://creativecommons.org/publicdomain/zero/1.0"))),
+    commands ++= Seq(hello, changeColor, partitionBySource1D)
+
   )
   .configs (MultiJvm)
-
 
 
 
