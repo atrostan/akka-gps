@@ -85,14 +85,6 @@ class EntityManager(
         replyTo ! RefResponseFromReceptionist(result)
         Behaviors.same
 
-      case askGCRefFromReceptionist(replyTo) =>
-        val f: Future[Receptionist.Listing] =
-          ctx.system.receptionist.ask(replyTo => Receptionist.Find(GlobalCoordinatorKey, replyTo))
-
-        val GCListingResult = Await.result(f, waitTime)
-        replyTo ! GCRefResponseFromReceptionist(GCListingResult)
-        Behaviors.same
-
       case AddOne(eCl, vid, pid) =>
         val eid = new EntityId(eCl, vid, pid)
         // increment all mirrors of myself
@@ -210,56 +202,47 @@ object EntityManager {
     ctx.system.receptionist ! Receptionist.Register(EntityManagerKey, ctx.self)
     new EntityManager(ctx, partitionMap, mainArray, pid)
   })
+  // command/response typedef
+  sealed trait Command extends CborSerializable
+  sealed trait Response extends CborSerializable
 
-  trait Command extends CborSerializable
-
-  trait Response extends CborSerializable
-
-  // Main/Mirror Initialization
-  case class Initialize(
+  // Sync Main/Mirror Initialization
+  final case class Initialize(
       entityClass: String,
       vertexId: Int,
       partitionId: Int,
       neighbors: ArrayBuffer[EntityId]
   ) extends Command
 
-  case class SpawnPC(pid: Int) extends Command
+  // Init ASync Command
+  final case class SpawnPC(pid: Int) extends Command
+  final case class SpawnGC() extends Command
 
-  case class SpawnGC() extends Command
+  // Init Sync Command
+  final case class GetNMainsInitialized(replyTo: ActorRef[NMainsInitResponse]) extends Command
+  final case class GetNMirrorsInitialized(replyTo: ActorRef[NMirrorsInitResponse]) extends Command
 
-  case class GetNMainsInitialized(replyTo: ActorRef[NMainsInitResponse]) extends Command
-
-  case class NMainsInitResponse(n: Int) extends Response
-
-  case class GetNMirrorsInitialized(replyTo: ActorRef[NMirrorsInitResponse]) extends Command
-
-  case class NMirrorsInitResponse(n: Int) extends Response
-
-  case class AskRefFromReceptionist[T](
+  // Init Sync Receptionist Query
+  final case class AskRefFromReceptionist[T](
       sk: ServiceKey[T],
       replyTo: ActorRef[RefResponseFromReceptionist]
   ) extends Command
 
-  case class RefResponseFromReceptionist(listing: Receptionist.Listing) extends Response
+  // Init Sync Response
+  final case class NMainsInitResponse(n: Int) extends Response
+  final case class NMirrorsInitResponse(n: Int) extends Response
 
-  case class PCRefResponseFromReceptionist(listing: Receptionist.Listing) extends Response
-
-  case class askGCRefFromReceptionist(replyTo: ActorRef[GCRefResponseFromReceptionist])
-      extends Command
-
-  case class GCRefResponseFromReceptionist(listing: Receptionist.Listing) extends Response
+  // Init Sync Receptionist Response
+  final case class RefResponseFromReceptionist(listing: Receptionist.Listing) extends Response
 
   // GAS
-  case class TerminationVote(stepNum: Int) extends Command
+  final case class TerminationVote(stepNum: Int) extends Command
 
   // Counter TEST ONLY
-  case class AddOne(entityClass: String, vertexId: Int, partitionId: Int) extends Command
-
-  case class GetSum(entityClass: String, vertexId: Int, partitionId: Int) extends Command
-
-  case class WrappedTotal(res: VertexEntity.Response) extends Command
-
-  case class Received(i: Int) extends Command
+  final case class AddOne(entityClass: String, vertexId: Int, partitionId: Int) extends Command
+  final case class GetSum(entityClass: String, vertexId: Int, partitionId: Int) extends Command
+  final case class WrappedTotal(res: VertexEntity.Response) extends Command
+  final case class Received(i: Int) extends Command
 
   private case class ListingResponse(listing: Receptionist.Listing) extends Command
 }

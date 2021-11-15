@@ -31,36 +31,30 @@ object VertexEntity {
         Behaviors.setup(ctx => new MirrorEntity(ctx, nodeAddress, entityContext))
     }
   }
-
+  // command/response typedef
   trait Command extends CborSerializable
-
   trait Response extends CborSerializable
-
-  case class LocationResponse(message: String)
 
   // PartitionCoordinator Commands
   final case class NotifyLocation(replyTo: ActorRef[LocationResponse]) extends VertexEntity.Command
 
-  final case class NeighbourMessage(stepNum: Int, msg: String) extends VertexEntity.Command
-
-  final case class GetValue(replyTo: ActorRef[VertexEntity.Response]) extends VertexEntity.Command
-
-  case class SubTtl(entityId: String, ttl: Int) extends VertexEntity.Response
-
-  case object StopVertex extends Command
-
-  case object Idle extends Command
-
   // GAS General Commands
-  case object Begin extends VertexEntity.Command
-
-  case object End extends VertexEntity.Command
+  final case object Begin extends VertexEntity.Command
+  final case object End extends VertexEntity.Command
+  final case class NeighbourMessage(stepNum: Int, msg: String) extends VertexEntity.Command
+  final case object StopVertex extends Command
+  final case object Idle extends Command
 
   // Counter actions TESTING ONLY
-  case object Increment extends VertexEntity.Command
+  final case object Increment extends VertexEntity.Command
+  final case object EchoValue extends VertexEntity.Command
+  final case class GetValue(replyTo: ActorRef[VertexEntity.Response]) extends VertexEntity.Command
 
-  case object EchoValue extends VertexEntity.Command
+  final case class LocationResponse(message: String) extends Response
+  final case class SubTtl(entityId: String, ttl: Int) extends VertexEntity.Response
+
 }
+
 // Types of VertexEntities available in shard // TODO Part of HACK, extra coupling
 object VertexEntityType extends Enumeration {
   type VertexEntityType = Value

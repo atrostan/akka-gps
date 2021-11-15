@@ -5,8 +5,7 @@ import akka.cluster.{ClusterEvent, Member}
 import com.Typedefs.{EMRef, GCRef, PCRef}
 import com.cluster.graph.Init._
 import com.cluster.graph.PartitionCoordinator.BroadcastLocation
-import com.cluster.graph.entity.{EntityId, MainEntity, MirrorEntity, VertexEntityType}
-import com.preprocessing.partitioning.oneDim.Partitioning
+import com.cluster.graph.entity.{EntityId, VertexEntityType}
 import com.typesafe.config.{Config, ConfigFactory}
 
 import scala.collection.mutable.ArrayBuffer
@@ -150,7 +149,8 @@ object ClusterShardingApp {
       println(s"PC${pid} Broadcasting location to its main")
       pcRef ! BroadcastLocation()
     }
-    // ensure that the number of partition coordinator ref acknowledgements by main vertices equals the number of main vertices
+    // ensure that the number of partition coordinator ref acknowledgements by main vertices equals the number of main
+    // vertices
     var totalMainsAckd = 0
     for ((pid, pcRef) <- pcRefs) {
       val nMainsAckd = getNMainsAckd(entityManager, pcRef)
@@ -162,14 +162,32 @@ object ClusterShardingApp {
 
     // TODO at beginning send, BEGIN(0)
     // increment mains and their mirrors
-    for (main <- png.mainArray) entityManager ! EntityManager.AddOne(VertexEntityType.Main.toString(), main.id, main.partition.id)
-    for (main <- png.mainArray) entityManager ! EntityManager.AddOne(VertexEntityType.Main.toString(), main.id, main.partition.id)
+    for (main <- png.mainArray)
+      entityManager ! EntityManager.AddOne(
+        VertexEntityType.Main.toString(),
+        main.id,
+        main.partition.id
+      )
+    for (main <- png.mainArray)
+      entityManager ! EntityManager.AddOne(
+        VertexEntityType.Main.toString(),
+        main.id,
+        main.partition.id
+      )
 
     // see if increments have been propagated correctly to mirrors
     for (main <- png.mainArray) {
-      entityManager ! EntityManager.GetSum(VertexEntityType.Main.toString(), main.id, main.partition.id)
+      entityManager ! EntityManager.GetSum(
+        VertexEntityType.Main.toString(),
+        main.id,
+        main.partition.id
+      )
       for (mirror <- main.mirrors) {
-        entityManager ! EntityManager.GetSum(VertexEntityType.Mirror.toString(), mirror.id, mirror.partition.id)
+        entityManager ! EntityManager.GetSum(
+          VertexEntityType.Mirror.toString(),
+          mirror.id,
+          mirror.partition.id
+        )
       }
     }
   }

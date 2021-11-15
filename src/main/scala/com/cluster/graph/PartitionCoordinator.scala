@@ -81,7 +81,9 @@ class PartitionCoordinator(
       case Initialize(mns, pid, replyTo) =>
         mains ++= mns
         partitionId = pid
-        replyTo ! InitResponse(s"Initialized PC on partition ${pid} with ${mains.length} mains")
+        replyTo ! InitializeResponse(
+          s"Initialized PC on partition ${pid} with ${mains.length} mains"
+        )
         Behaviors.same
 
       case UpdateGC(gc, replyTo) =>
@@ -150,35 +152,32 @@ object PartitionCoordinator {
       new PartitionCoordinator(ctx, mains, partitionId)
     })
   }
-
+  // command/response typedef
   sealed trait Response extends CborSerializable
+  sealed trait Command extends CborSerializable
 
-  trait Command extends CborSerializable
-
+  // Init Sync Commands
   final case class Initialize(
       mains: List[EntityId],
       partitionId: Int,
-      replyTo: ActorRef[InitResponse]
+      replyTo: ActorRef[InitializeResponse]
   ) extends Command
-
-  case class InitResponse(message: String) extends Response
-
   final case class UpdateGC(gcRef: GCRef, replyTo: ActorRef[UpdateGCResponse]) extends Command
+  final case class GetNMainsAckd(replyTo: ActorRef[NMainsAckdResponse]) extends Command
 
-  case class GetNMainsAckd(replyTo: ActorRef[NMainsAckdResponse]) extends Command
+  //  Init Async Commands
+  final case class BroadcastLocation() extends Command
 
-  case class NMainsAckdResponse(n: Int) extends Response
+  // Init Sync Response
+  final case class InitializeResponse(message: String) extends Response
+  final case class UpdateGCResponse(message: String) extends Response
+  final case class NMainsAckdResponse(n: Int) extends Response
 
-  case class UpdateGCResponse(message: String) extends Response
-
-  case class DONE(stepNum: Int) extends Command
-  case class TerminationVote(stepNum: Int) extends Command
-
-  case class BEGIN(stepNum: Int) extends Command
-
-  case class BroadcastLocation() extends Command
+  // GAS
+  final case class DONE(stepNum: Int) extends Command
+  final case class TerminationVote(stepNum: Int) extends Command
+  final case class BEGIN(stepNum: Int) extends Command
 
   private case class AdaptedResponse(message: String) extends Command
-
   case object Idle extends Command
 }

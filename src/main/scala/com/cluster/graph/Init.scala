@@ -70,7 +70,7 @@ object Init {
       s: Scheduler
   ): Int = {
     implicit val scheduler = s
-    val future: Future[PartitionCoordinator.InitResponse] = pc.ask(ref =>
+    val future: Future[PartitionCoordinator.InitializeResponse] = pc.ask(ref =>
       PartitionCoordinator.Initialize(
         mains,
         partitionId,
@@ -79,7 +79,7 @@ object Init {
     )
     val pcInitResult = Await.result(future, waitTime)
     pcInitResult match {
-      case PartitionCoordinator.InitResponse(message) =>
+      case PartitionCoordinator.InitializeResponse(message) =>
         println(message)
         1
       case _ =>
@@ -151,11 +151,11 @@ object Init {
   ): Unit = {
     implicit val scheduler = sched
 
-    val f: Future[GlobalCoordinator.InitResponse] =
+    val f: Future[GlobalCoordinator.InitializeResponse] =
       gc.ask(ref => GlobalCoordinator.Initialize(pcRefs, nNodes, ref))
     val GCInitResponse = Await.result(f, waitTime)
     GCInitResponse match {
-      case GlobalCoordinator.InitResponse(message) =>
+      case GlobalCoordinator.InitializeResponse(message) =>
         println(message)
       case _ =>
         println("Failed to initialize the global coordinator")
@@ -189,46 +189,52 @@ object Init {
     }
   }
 
-  def blockUntilGlobalCoordinatorRegistered(
-      entityManager: ActorSystem[EntityManager.Command]
-  ): GCRef = {
-    implicit val scheduler = entityManager.scheduler
-    var flag = true
-    var gcRef: GCRef = null
-    while (flag) {
-      val f: Future[EntityManager.GCRefResponseFromReceptionist] = entityManager.ask(ref => {
-        EntityManager.askGCRefFromReceptionist(ref)
-      })
-      val GCRefResponseFromReceptionist = Await.result(f, waitTime)
+//  def blockUntilGlobalCoordinatorRegistered(
+//      entityManager: ActorSystem[EntityManager.Command]
+//  ): GCRef = {
+//    implicit val scheduler = entityManager.scheduler
+//    var flag = true
+//    var gcRef: GCRef = null
+//    while (flag) {
+//      val f: Future[EntityManager.GCRefResponseFromReceptionist] = entityManager.ask(ref => {
+//        EntityManager.askGCRefFromReceptionist(ref)
+//      })
+//      val GCRefResponseFromReceptionist = Await.result(f, waitTime)
+//
+//      GCRefResponseFromReceptionist match {
+//        case EntityManager.GCRefResponseFromReceptionist(listing) =>
+//          val set = listing.serviceInstances(GlobalCoordinatorKey)
+//          // the partitionCoordinator for this pid has been registered
+//          if (set.size == 1) {
+//            gcRef = set.head
+//            flag = false
+//          }
+//      }
+//      Thread.sleep(1000)
+//    }
+//
+//    val actorRefResolver = ActorRefResolver(entityManager)
+//    val serializedActorRef: Array[Byte] =
+//      actorRefResolver.toSerializationFormat(gcRef).getBytes(StandardCharsets.UTF_8)
+//
+//    val str = new String(serializedActorRef, StandardCharsets.UTF_8)
+//    println("Serialized global coordinator actor ref", str)
+//
+//    val deserializedActorRef = actorRefResolver.resolveActorRef[GCRef](str)
+//    println("heres the deserialized", deserializedActorRef)
+//    gcRef
+//  }
 
-      GCRefResponseFromReceptionist match {
-        case EntityManager.GCRefResponseFromReceptionist(listing) =>
-          val set = listing.serviceInstances(GlobalCoordinatorKey)
-          // the partitionCoordinator for this pid has been registered
-          if (set.size == 1) {
-            gcRef = set.head
-            flag = false
-          }
-      }
-      Thread.sleep(1000)
-    }
-
-    val actorRefResolver = ActorRefResolver(entityManager)
-    val serializedActorRef: Array[Byte] =
-      actorRefResolver.toSerializationFormat(gcRef).getBytes(StandardCharsets.UTF_8)
-
-    val str = new String(serializedActorRef, StandardCharsets.UTF_8)
-    println("Serialized global coordinator actor ref", str)
-
-    val deserializedActorRef = actorRefResolver.resolveActorRef[GCRef](str)
-    println("heres the deserialized", deserializedActorRef)
-    gcRef
-  }
-
-  /** Block until the number of registered refs == nToRegister
-    *
-    * @param entityManager
-    */
+  /**
+   * Block execution of akka-gps until nToRegister members of type T registered with service key
+   * ServiceKey[T](s"$idStr$pid") have been registered by the cluster receptionist
+   *
+   * @param entityManager the ActorSystem that communicates with the receptionist
+   * @param idStr the name of service key id that is registered with the receptionist
+   * @param nToRegister the number of expected registered service keys
+   * @tparam T either {EntityManager, PartitionCoordinator, GlobalCoordinator}.Command
+   * @return
+   */
   def blockUntilAllRefsRegistered[T: ClassTag](
       entityManager: ActorSystem[EntityManager.Command],
       idStr: String,
@@ -236,7 +242,7 @@ object Init {
   ): collection.mutable.Map[Int, ActorRef[T]] = {
     implicit val scheduler = entityManager.scheduler
 
-    // build a map from partition id to PartitionCoordinator entity ref
+    // build a map from partition id to entity ref
     val refs = collection.mutable.Map[Int, ActorRef[T]]()
     var flag = true
 
@@ -291,7 +297,7 @@ object Init {
       totalMainsInitialized: Int
   ): Int = {
     // async call to initialize main
-    val future: Future[MainEntity.InitResponse] = mainERef.ask(ref =>
+    val future: Future[MainEntity.InitializeResponse] = mainERef.ask(ref =>
       MainEntity.Initialize(
         eid.vertexId,
         eid.partitionId,
@@ -303,7 +309,7 @@ object Init {
     // blocking to wait until main vertex is initialized
     val mainInitResult = Await.result(future, waitTime)
     mainInitResult match {
-      case MainEntity.InitResponse(_) =>
+      case MainEntity.InitializeResponse(_) =>
         totalMainsInitialized + 1
       case _ =>
         println(s"Failed to Initialize Main ${eid.vertexId}_${eid.partitionId}")
@@ -324,7 +330,7 @@ object Init {
       eid: EntityId,
       totalMirrorsInitialized: Int
   ): Int = {
-    val future: Future[MirrorEntity.InitResponse] = mirrorERef.ask(ref =>
+    val future: Future[MirrorEntity.InitializeResponse] = mirrorERef.ask(ref =>
       MirrorEntity.InitializeMirror(
         m.vertexId,
         m.partitionId,
@@ -335,7 +341,7 @@ object Init {
     // blocking to wait until mirror vertex is initialized
     val mirrorInitResult = Await.result(future, waitTime)
     mirrorInitResult match {
-      case MirrorEntity.InitResponse(_) =>
+      case MirrorEntity.InitializeResponse(_) =>
         totalMirrorsInitialized + 1
       case _ =>
         println(s"Failed to Initialize Main ${eid.vertexId}_${eid.partitionId}")

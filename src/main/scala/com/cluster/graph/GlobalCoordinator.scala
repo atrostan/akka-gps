@@ -61,7 +61,7 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
         pcRefs ++= pcs
         numNodes = ns
         numPartitions = pcRefs.size
-        replyTo ! InitResponse("Initialized the Global Coordinator")
+        replyTo ! InitializeResponse("Initialized the Global Coordinator")
         Behaviors.same
 
       case BEGIN() =>
@@ -122,28 +122,27 @@ object GlobalCoordinator {
     })
   }
 
+  // command/response typedef
+  sealed trait Command extends CborSerializable
   sealed trait Response extends CborSerializable
 
-  trait Command extends CborSerializable
+  // GAS Commands
+  final case class DONE(stepNum: Int) extends Command
+  final case class TerminationVote(stepNum: Int) extends Command
+  final case class BEGIN() extends Command
 
-  case class DONE(stepNum: Int) extends Command
-  case class TerminationVote(stepNum: Int) extends Command
-  case class BEGIN() extends Command
-
+  // Init Sync Commands
   final case class GetPCRefs(replyTo: ActorRef[GetPCRefsResponse]) extends Command
-
-  case class GetPCRefsResponse(pcRefs: collection.mutable.Map[Int, PCRef]) extends Response
-
   final case class BroadcastRef(gcRef: GCRef, replyTo: ActorRef[BroadcastRefResponse])
       extends Command
-
-  case class BroadcastRefResponse(message: String) extends Response
-
   final case class Initialize(
       pcs: collection.mutable.Map[Int, PCRef],
       nPartitions: Int,
-      replyTo: ActorRef[InitResponse]
+      replyTo: ActorRef[InitializeResponse]
   ) extends Command
 
-  case class InitResponse(message: String) extends Response
+  // Init Sync Responses
+  final case class GetPCRefsResponse(pcRefs: collection.mutable.Map[Int, PCRef]) extends Response
+  final case class BroadcastRefResponse(message: String) extends Response
+  final case class InitializeResponse(message: String) extends Response
 }

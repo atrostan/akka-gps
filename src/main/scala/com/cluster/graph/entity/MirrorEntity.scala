@@ -34,7 +34,7 @@ class MirrorEntity(
         main = m
         val logStr = s"Received ask to initialize Mirror ${vertexId}_${partitionId}"
         ctxLog(logStr)
-        replyTo ! InitResponse(s"Initialized Mirror ${vertexId}_${partitionId}")
+        replyTo ! InitializeResponse(s"Initialized Mirror ${vertexId}_${partitionId}")
         Behaviors.same
 
       // GAS Actions
@@ -106,17 +106,19 @@ object MirrorEntity {
   }
 
   // Orchestration
-  sealed trait Reply
+  sealed trait Response extends CborSerializable
 
-  case class InitResponse(message: String) extends CborSerializable with Reply
-
+  // Init
   final case class InitializeMirror(
       vertexId: Int,
       partitionId: Int,
       main: EntityId,
-      replyTo: ActorRef[InitResponse]
+      replyTo: ActorRef[InitializeResponse]
   ) extends VertexEntity.Command
 
   // GAS
   final case class ApplyResult(stepNum: Int, msg: String) extends VertexEntity.Command
+
+  final case class InitializeResponse(message: String) extends Response
+
 }

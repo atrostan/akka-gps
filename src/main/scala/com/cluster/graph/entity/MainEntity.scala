@@ -43,7 +43,7 @@ class MainEntity(
 
         val logStr = s"Received ask to initialize Main ${vertexId}_${partitionId}"
         ctxLog(logStr)
-        replyTo ! InitResponse(s"Initialized Main ${vertexId}_${partitionId}")
+        replyTo ! InitializeResponse(s"Initialized Main ${vertexId}_${partitionId}")
         Behaviors.same
 
       // PartitionCoordinator Commands
@@ -120,18 +120,15 @@ object MainEntity {
   }
 
   // Orchestration
-  sealed trait Response
+  sealed trait Response extends CborSerializable
 
-  case class InitResponse(message: String) extends CborSerializable with Response
-
-  case class AckPCLocation() extends CborSerializable with Response
-
+  // Init Sync Command
   final case class Initialize(
       vertexId: Int,
       partitionId: Int,
       neighbors: ArrayBuffer[EntityId],
       mirrors: ArrayBuffer[EntityId],
-      replyTo: ActorRef[InitResponse]
+      replyTo: ActorRef[InitializeResponse]
   ) extends VertexEntity.Command
 
   final case class StorePCRef(
@@ -139,6 +136,10 @@ object MainEntity {
       replyTo: ActorRef[AckPCLocation]
   ) extends VertexEntity.Command
 
+  // Init Sync Response
+  final case class InitializeResponse(message: String) extends Response
+
+  final case class AckPCLocation() extends Response
 
   // GAS
   final case class MirrorTotal(stepNum: Int, total: Int) extends VertexEntity.Command

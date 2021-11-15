@@ -68,12 +68,11 @@ object ClusterMemberEventListener {
           Behaviors.stopped
         }
     }
-
+  // command/response typedef
   sealed trait Response extends CborSerializable
+  sealed trait Command extends CborSerializable
 
-  trait Command extends CborSerializable
-
-  case class nMembersUpResponse(n: Int) extends Response
-
-  case class nMembersUp(replyTo: ActorRef[nMembersUpResponse]) extends ClusterDomainEvent
+  // Init
+  final case class nMembersUpResponse(n: Int) extends Response
+  final case class nMembersUp(replyTo: ActorRef[nMembersUpResponse]) extends ClusterDomainEvent
 }
