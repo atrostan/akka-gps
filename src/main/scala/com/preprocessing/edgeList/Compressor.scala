@@ -1,7 +1,6 @@
 package com.preprocessing.edgeList
 
-import org.apache.spark.SparkContext
-import org.apache.spark.SparkConf
+import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.rdd.RDD
 
 object Compressor {
@@ -69,11 +68,11 @@ The edgeList.Compressor will produce
 
     // TODO; add an additional argument and functionality to handle weighted graphs
     args.sliding(2, 2).toList.collect {
-      case Array("--nNodes", argNNodes: String) => nNodes = argNNodes.toInt
-      case Array("--nEdges", argNEdges: String) => nEdges = argNEdges.toInt
-      case Array("--inputFilename", argInFile: String) => infile = argInFile
+      case Array("--nNodes", argNNodes: String)          => nNodes = argNNodes.toInt
+      case Array("--nEdges", argNEdges: String)          => nEdges = argNEdges.toInt
+      case Array("--inputFilename", argInFile: String)   => infile = argInFile
       case Array("--outputFilename", argOutFile: String) => outfile = argOutFile
-      case Array("--sep", argSep: String) => sep = argSep
+      case Array("--sep", argSep: String)                => sep = argSep
     }
 
     var argStr = ""
@@ -99,7 +98,6 @@ The edgeList.Compressor will produce
           val split = s.split(sep)
           (split(0).toInt, split(1).toInt)
         })
-
 
       edgeList
       // for some reason, issues with performing the deduplication at this stage
@@ -155,7 +153,8 @@ The edgeList.Compressor will produce
         .coalesce(1, false) // TODO; partition into multiple files/numPartitions HERE
         .saveAsTextFile(outfile)
     } catch {
-      case e: org.apache.hadoop.mapred.FileAlreadyExistsException => println("File already exists, please delete the existing file")
+      case e: org.apache.hadoop.mapred.FileAlreadyExistsException =>
+        println("File already exists, please delete the existing file")
 
     }
 

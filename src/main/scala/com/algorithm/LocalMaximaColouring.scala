@@ -1,9 +1,7 @@
 package com.algorithm
 
-sealed trait LMCMessage
-
 case class Colour(num: Int) {
-    require(num >= 0)
+  require(num >= 0)
 }
 
 object LocalMaximaColouring extends VertexProgram[Int, Int, Int, Set[Int], Option[Colour]] {
@@ -12,8 +10,13 @@ object LocalMaximaColouring extends VertexProgram[Int, Int, Int, Set[Int], Optio
 
   override def sum(a: Set[Int], b: Set[Int]): Set[Int] = a.union(b)
 
-  override def apply(superStepNumber: Int, thisVertexId: Int, oldVal: Option[Colour], total: Option[Set[Int]]): Option[Colour] = {
-    if(superStepNumber == 0) {
+  override def apply(
+      superStepNumber: Int,
+      thisVertexId: Int,
+      oldVal: Option[Colour],
+      total: Option[Set[Int]]
+  ): Option[Colour] = {
+    if (superStepNumber == 0) {
       None
     } else {
       oldVal match {
@@ -38,19 +41,25 @@ object LocalMaximaColouring extends VertexProgram[Int, Int, Int, Set[Int], Optio
     }
   }
 
-  override def scatter(thisVertexId: Int, oldVal: Option[Colour], newVal: Option[Colour]): Option[Int] = {
+  override def scatter(
+      thisVertexId: Int,
+      oldVal: Option[Colour],
+      newVal: Option[Colour]
+  ): Option[Int] = {
     newVal match {
-      case None => Some(thisVertexId)
+      case None         => Some(thisVertexId)
       case Some(colour) => None
     }
   }
 
   override def voteToHalt(oldVal: Option[Colour], newVal: Option[Colour]): Boolean = {
     newVal match {
-      case None => false
+      case None         => false
       case Some(colour) => true
     }
   }
 
-  
+  override val defaultVertexValue: Option[Colour] = None
+
+  override val defaultActivationStatus: Boolean = true
 }

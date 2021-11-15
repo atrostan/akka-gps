@@ -4,16 +4,16 @@ import scala.collection.mutable.ArrayBuffer
 
 trait Actor {
   val id: Int
+  val partition: Partition
   //TODO; entityRef's custom .hashCode() should map to the correct shard?
   var entityRef: Int = -1
-  val partition: Partition
 }
 
 // main actor
 class Main(val id: Int, p: Partition) extends Actor {
+  val partition = p
   var neighbors = ArrayBuffer[Actor]()
   var mirrors = ArrayBuffer[Mirror]()
-  val partition = p
 
   override def toString(): String = {
     var s: String = ""
