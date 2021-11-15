@@ -1,4 +1,4 @@
-package com.example.algorithm
+package com.algorithm
 
 import com.algorithm._
 import org.scalatest._
@@ -27,7 +27,7 @@ class SequentialTest extends FunSuite with Matchers {
       g.Node(3) -> 5,
       g.Node(4) -> 8
     )
-    val results = SequentialRun(SSSP, g)(states, activeMap)
+    val results = SequentialRun(SSSP, g)
     results should be(distances)
   }
 
@@ -76,7 +76,7 @@ class SequentialTest extends FunSuite with Matchers {
       g.Node(6) -> 1012,
       g.Node(7) -> 2012
     )
-    val results = SequentialRun(SSSP, g)(states, activeMap)
+    val results = SequentialRun(SSSP, g)
     results should be(distances)
   }
 
@@ -102,7 +102,7 @@ class SequentialTest extends FunSuite with Matchers {
       g.Node(4) -> Some(Colour(0)),
       g.Node(5) -> Some(Colour(0))
     )
-    val results = SequentialRun(LocalMaximaColouring, g)(states, activeMap)
+    val results = SequentialRun(LocalMaximaColouring, g)
     results should be(finalColours)
   }
 

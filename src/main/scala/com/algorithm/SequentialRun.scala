@@ -10,9 +10,6 @@ object SequentialRun {
   def apply[VertexIdT, MessageT, AccumulatorT, VertexValT](
       vertexProgram: VertexProgram[VertexIdT, Int, MessageT, AccumulatorT, VertexValT],
       graph: Graph[VertexIdT, WDiEdge]
-  )(
-      initialStates: Map[graph.NodeT, VertexValT],
-      initialActiveMap: Map[graph.NodeT, Boolean]
   ): Map[graph.NodeT, VertexValT] = {
 
     type Vertex = graph.NodeT
