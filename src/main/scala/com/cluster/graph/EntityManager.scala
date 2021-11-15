@@ -8,7 +8,6 @@ import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityRef}
 import akka.cluster.typed.Cluster
 import akka.util.Timeout
 import com.CborSerializable
-import com.cluster.graph.GlobalCoordinator.GlobalCoordinatorKey
 import com.cluster.graph.Init.{blockInitMain, blockInitMirror, blockInitPartitionCoordinator}
 import com.cluster.graph.entity._
 import com.preprocessing.partitioning.oneDim.Main
@@ -159,12 +158,15 @@ class EntityManager(
       val mirrors = mainArray(eid.vertexId).mirrors.map(m =>
         new EntityId(VertexEntityType.Mirror.toString(), m.id, m.partition.id)
       )
+      // TODO Pass partitionInDegree to all vertices being created
       totalMainsInitialized =
         blockInitMain(mainERef, eid, neighbors, mirrors, totalMainsInitialized)
       for (m <- mirrors) {
         val mirrorERef: EntityRef[VertexEntity.Command] =
           sharding.entityRefFor(VertexEntity.TypeKey, m.toString)
-        totalMirrorsInitialized = blockInitMirror(mirrorERef, m, eid, totalMirrorsInitialized)
+        // TODO Need to add neighbours 
+        val neighbors = ArrayBuffer[EntityId]()
+        totalMirrorsInitialized = blockInitMirror(mirrorERef, m, eid, neighbors, totalMirrorsInitialized)
       }
     }
   }

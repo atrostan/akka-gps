@@ -63,11 +63,11 @@ class PartitionCoordinator(
   def blockBroadcastLocation(
       mainERef: EntityRef[VertexEntity.Command]
   ): Unit = {
-    val future: Future[MainEntity.AckPCLocation] =
-      mainERef.ask(ref => MainEntity.StorePCRef(pcRef, ref))
+    val future: Future[VertexEntity.AckPCLocation] =
+      mainERef.ask(ref => VertexEntity.StorePCRef(pcRef, ref))
     val broadcastResult = Await.result(future, waitTime)
     broadcastResult match {
-      case MainEntity.AckPCLocation() =>
+      case VertexEntity.AckPCLocation() =>
         nMainsAckd += 1
       case _ =>
         println(s"${mainERef} failed to acknowledge ${pcRef}'s location'")

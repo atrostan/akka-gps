@@ -6,11 +6,7 @@ import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable
 import akka.actor.typed.{Behavior, ActorRef}
 import akka.actor.typed.scaladsl.{Behaviors, AbstractBehavior, ActorContext}
-import akka.cluster.sharding.typed.scaladsl.{
-  ClusterSharding,
-  EntityContext,
-  EntityTypeKey
-}
+import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityContext, EntityTypeKey}
 
 import com.cluster.graph.PartitionCoordinator
 import VertexEntity._
@@ -30,7 +26,7 @@ class MainEntity(
   var active: Boolean = vertexProgram.defaultActivationStatus
   var currentValue: VertexValT = vertexProgram.defaultVertexValue
   val okToProceed: mutable.Map[SuperStep, Boolean] = new mutable.HashMap()
-  
+
   var value = 0 // Counter TEST ONLY
 
   // In order for vertices find refs for messages, they need to sharding.entityRefFor by entity id
@@ -135,7 +131,7 @@ class MainEntity(
     (active, total) match {
       case (false, None) => {
         // Vote to terminate
-        partitionCoordinator ! MainEntity.TerminationVote(stepNum) // TODO change to new PC command
+        pcRef ! PartitionCoordinator.TerminationVote(stepNum) // TODO change to new PC command
       }
       case _ => {
         // Continue
@@ -149,7 +145,7 @@ class MainEntity(
         }
         active = !vertexProgram.voteToHalt(oldVal, newVal)
         localScatter(stepNum, oldVal, newVal, sharding)
-        partitionCoordinator ! MainEntity.Done(stepNum) // TODO change to new PC command
+        pcRef ! PartitionCoordinator.DONE(stepNum) // TODO change to new PC command
       }
     }
 
@@ -179,20 +175,4 @@ object MainEntity {
       new MainEntity(ctx, nodeAddress, entityContext)
     })
   }
-
-  // Orchestration // TODO Move these to VertexEntity
-  sealed trait Response extends CborSerializable
-
-  final case class StorePCRef(
-      pcRef: ActorRef[PartitionCoordinator.Command],
-      replyTo: ActorRef[AckPCLocation]
-  ) extends VertexEntity.Command
-
-  // Init Sync Response
-  final case class InitializeResponse(message: String) extends Response
-
-  final case class AckPCLocation() extends Response
-
-  // GAS
-  final case class MirrorTotal(stepNum: Int, total: Int) extends VertexEntity.Command
 }

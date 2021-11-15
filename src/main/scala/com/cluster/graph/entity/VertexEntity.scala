@@ -5,14 +5,11 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
-import akka.cluster.sharding.typed.scaladsl.{
-  ClusterSharding,
-  EntityContext,
-  EntityTypeKey,
-}
+import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityContext, EntityTypeKey}
 import com.CborSerializable
 import com.algorithm.LocalMaximaColouring
 import com.algorithm.Colour
+import com.cluster.graph.PartitionCoordinator
 
 object VertexEntity {
   // Hard coded for now
@@ -32,12 +29,19 @@ object VertexEntity {
   val TypeKey = EntityTypeKey[VertexEntity.Command]("VertexEntity")
 
   // GAS General Commands
-  case class Begin(stepNum: Int) extends VertexEntity.Command
-  case object End extends VertexEntity.Command
-  final case class NeighbourMessage(stepNum: Int, edgeVal: Option[EdgeValT],  msg: Option[MessageT]) extends VertexEntity.Command
+  case class Begin(stepNum: Int) extends Command
+  case object End extends Command
+  final case class NeighbourMessage(stepNum: Int, edgeVal: Option[EdgeValT], msg: Option[MessageT])
+      extends Command
 
   // PartitionCoordinator Commands
-  final case class NotifyLocation(replyTo: ActorRef[LocationResponse]) extends VertexEntity.Command
+  final case class NotifyLocation(replyTo: ActorRef[LocationResponse]) extends Command
+  final case class LocationResponse(message: String) extends Response
+  final case class StorePCRef(
+      pcRef: ActorRef[PartitionCoordinator.Command],
+      replyTo: ActorRef[AckPCLocation]
+  ) extends Command
+  final case class AckPCLocation() extends Response
 
   // Orchestration
   final case class Initialize(
@@ -45,31 +49,28 @@ object VertexEntity {
       partitionId: Int,
       neighbors: ArrayBuffer[EntityId],
       mirrors: ArrayBuffer[EntityId],
-      replyTo: ActorRef[MainEntity.InitializeResponse]
-  ) extends VertexEntity.Command
-
-  // GAS
-  final case class MirrorTotal(stepNum: Int, total: Option[AccumulatorT]) extends VertexEntity.Command
-
-  // Orchestration
+      replyTo: ActorRef[InitializeResponse]
+  ) extends Command
   final case class InitializeMirror(
       vertexId: Int,
       partitionId: Int,
       main: EntityId,
       neighs: ArrayBuffer[EntityId],
-      replyTo: ActorRef[MirrorEntity.InitializeResponse]
-  ) extends VertexEntity.Command
+      replyTo: ActorRef[InitializeResponse]
+  ) extends Command
+
+  // Init Sync Response
+  final case class InitializeResponse(message: String) extends Response
 
   // GAS
-  final case class ApplyResult(stepNum: Int, oldVal: VertexValT, newVal: VertexValT) extends VertexEntity.Command
+  final case class MirrorTotal(stepNum: Int, total: Option[AccumulatorT]) extends Command
+  final case class ApplyResult(stepNum: Int, oldVal: VertexValT, newVal: VertexValT) extends Command
 
   // Counter actions TESTING ONLY
-  case object Increment extends VertexEntity.Command
-  final case class GetValue(replyTo: ActorRef[VertexEntity.Response]) extends VertexEntity.Command
-  case object EchoValue extends VertexEntity.Command
+  case object Increment extends Command
+  final case class GetValue(replyTo: ActorRef[VertexEntity.Response]) extends Command
+  case object EchoValue extends Command
   case class SubTtl(entityId: String, ttl: Int) extends VertexEntity.Response
-
-  final case class LocationResponse(message: String) extends Response
 
   def apply(
       nodeAddress: String,
@@ -88,7 +89,7 @@ object VertexEntity {
 
 trait VertexEntity {
   import VertexEntity._
-  
+
   // Vertex Characteristics/Topology
   var vertexId: Int = 0
   var partitionId: Short = 0
@@ -106,21 +107,28 @@ trait VertexEntity {
   // Check if ready to perform role in the apply phase, then begin if ready
   def applyIfReady(stepNum: SuperStep): Unit
 
-  def localScatter(stepNum: SuperStep, oldValue: VertexValT, newValue: VertexValT, shardingRef: ClusterSharding): Unit = {
+  def localScatter(
+      stepNum: SuperStep,
+      oldValue: VertexValT,
+      newValue: VertexValT,
+      shardingRef: ClusterSharding
+  ): Unit = {
     val msgOption = vertexProgram.scatter(vertexId, oldValue, newValue)
-    
-    for(neighbor <- neighbors) {
+
+    for (neighbor <- neighbors) {
+      // TODO 0 edgeVal for now, we need to implement these. Depends on neighbor!
       val cmd = msgOption match {
-        case None => NeighbourMessage(stepNum + 1, None, None)
-        case Some(msg) => NeighbourMessage(stepNum + 1, Some(0), Some(msg)) // TODO 0 edgeVal for now, we need to implement these. Depends on neighbor!
+        case None      => NeighbourMessage(stepNum + 1, None, None)
+        case Some(msg) => NeighbourMessage(stepNum + 1, Some(0), Some(msg))
       }
       val neighbourRef = shardingRef.entityRefFor(neighbor.getTypeKey(), neighbor.toString())
       neighbourRef ! cmd
     }
   }
 
-  def reactToNeighbourMessage(neighbourMessage: NeighbourMessage): Behavior[Command] = neighbourMessage match {
-    case NeighbourMessage(stepNum, edgeVal, msg) => {
+  def reactToNeighbourMessage(neighbourMessage: NeighbourMessage): Behavior[Command] =
+    neighbourMessage match {
+      case NeighbourMessage(stepNum, edgeVal, msg) => {
         ctxLog("Received neighbour msg " + msg)
         (edgeVal, msg) match {
           case (None, None) => {
@@ -129,11 +137,11 @@ trait VertexEntity {
           case (Some(edgeVal), Some(msg)) => {
             val gatheredValue = vertexProgram.gather(edgeVal, msg)
             val newSum = summedTotal.get(stepNum) match {
-              case Some(total) => vertexProgram.sum(total, gatheredValue) 
-              case None => gatheredValue
+              case Some(total) => vertexProgram.sum(total, gatheredValue)
+              case None        => gatheredValue
             }
             summedTotal.update(stepNum, newSum)
-            
+
           }
           case (_, _) => ??? // Shouldn't happen
         }
@@ -141,7 +149,7 @@ trait VertexEntity {
         applyIfReady(stepNum)
         Behaviors.same
       }
-  }
+    }
 }
 
 // Types of VertexEntities available in shard // TODO Part of HACK, extra coupling
