@@ -1,123 +1,194 @@
 package com.cluster.graph
 
 import akka.actor.typed._
-import akka.cluster.Member
-import com.graph.{Edge, Vertex}
-import com.preprocessing.partitioning.oneDim.Partitioning
-import com.typesafe.config.ConfigFactory
+import akka.cluster.{ClusterEvent, Member}
+import com.Typedefs.{EMRef, GCRef, PCRef}
+import com.cluster.graph.Init._
+import com.cluster.graph.PartitionCoordinator.BroadcastLocation
+import com.cluster.graph.entity.{EntityId, VertexEntityType}
+import com.typesafe.config.{Config, ConfigFactory}
+
 import scala.collection.mutable.ArrayBuffer
 import com.cluster.graph.entity.{EntityId, VertexEntityType}
 
 object ClusterShardingApp {
 
-  // example of how to define a custom type
-  // TODO use more type aliases in project
-  //  type PartitionMap = collection.mutable.Map[Int, Int]
-  //  object PartitionMap {
-  //    def empty: PartitionMap = collection.mutable.Map.empty
-  //    def apply(pairs: (Int,Int)*): PartitionMap = collection.mutable.Map(pairs:_*)
-  //  }
-  //
-  //  val myPMap: PartitionMap = collection.mutable.Map[Int,Int]()
+  val partitionMap = collection.mutable.Map[Int, Int]()
+  val partCoordMap = collection.mutable.Map[Int, Int]()
+  val numberOfShards = ConfigFactory
+    .load("cluster")
+    .getInt("akka.cluster.sharding.number-of-shards")
 
-  // Sample graph for partitioning and akka population test
-  def initGraphPartitioning(): Partitioning = {
-    val edges = ArrayBuffer[Edge]()
-    val nPartitions: Int = 4
-    val nNodes: Int = 5
-    val nEdges: Int = 10
+  // number of nodes in the cluster =
+  // (partitionCoordinator/shard) * nPartitions + domainlistener + front/globalCoordinator
+  val nNodes = numberOfShards + 2
 
-    val v0 = Vertex(0)
-    val v1 = Vertex(1)
-    val v2 = Vertex(2)
-    val v3 = Vertex(3)
-    val v4 = Vertex(4)
+  def createConfig(role: String, port: Int): Config = {
+    val config = ConfigFactory
+      .parseString(s"""
+      akka.remote.artery.canonical.port = $port
+      akka.cluster.roles = [$role]
+      akka.cluster.seed-nodes = [
+        "akka://ClusterSystem@127.0.0.1:25251"
+      ]
+      akka.cluster.role.shard.min-nr-of-members = $numberOfShards
 
-    val e0 = Edge(v0, v1)
-    val e1 = Edge(v0, v2)
-    val e2 = Edge(v0, v3)
-    val e3 = Edge(v1, v2)
-    val e4 = Edge(v2, v0)
-    val e5 = Edge(v2, v3)
-    val e6 = Edge(v3, v0)
-    val e7 = Edge(v3, v1)
-    val e8 = Edge(v0, v4)
-    val e9 = Edge(v4, v0)
-
-    val es = ArrayBuffer(e0, e1, e2, e3, e4, e5, e6, e7, e8, e9)
-    edges ++= es
-    // create partitioning data structure
-    val png = Partitioning(nPartitions, edges, nNodes, nEdges)
-    png
+      """)
+      .withFallback(ConfigFactory.load("cluster"))
+    config
   }
 
   def main(args: Array[String]): Unit = {
-    val partitionMap = collection.mutable.Map[Int, Int]()
-    if (args.isEmpty) {
-      val ports = ArrayBuffer[Int](25252, 25253, 25254, 25255)
-      startup("domainListener", ports.head - 1, partitionMap)
 
-      var i: Int = 0;
-      ports.foreach(p => {
-        partitionMap(i) = p
-        startup("shard", p, partitionMap)
-        i += 1
-      })
+    val png = initGraphPartitioning(numberOfShards)
+    val nodesUp = collection.mutable.Set[Member]()
 
-      startup("front", ports.last + 1, partitionMap)
-    } else {
-      require(args.size == 2, "Usage: role port")
-      startup(args(0), args(1).toInt, partitionMap)
+    println(s"Initializing cluster with ${nNodes} compute nodes")
+
+    println("Initializing domain listener")
+    val domainListenerPort = 25251
+    val domainListenerRole = "domainListener"
+    val domainListenerConfig = createConfig(domainListenerRole, domainListenerPort)
+    val domainListener: ActorSystem[ClusterEvent.ClusterDomainEvent] = ActorSystem(
+      ClusterMemberEventListener(nodesUp, nNodes),
+      "ClusterSystem",
+      domainListenerConfig
+    )
+
+    val shardPorts = ArrayBuffer[Int](25252, 25253, 25254, 25255)
+    val shardActors = ArrayBuffer[ActorSystem[EntityManager.Command]]()
+    var pid = 0
+    val nMains = png.mainArray.length
+    val nMirrors = png.mainArray.map(m => m.mirrors.length).sum
+
+    for (shardPort <- shardPorts) {
+      val pcPort = shardPort + numberOfShards
+      val shardConfig = createConfig("shard", shardPort)
+      val pcConfig = createConfig("partitionCoordinator", pcPort)
+
+      partitionMap(pid) = shardPort
+      partCoordMap(pid) = pcPort
+
+      val entityManager = ActorSystem[EntityManager.Command](
+        EntityManager(partitionMap, png.mainArray, pid),
+        "ClusterSystem",
+        shardConfig
+      )
+      shardActors += entityManager
+
+      pid += 1
     }
-  }
 
-  def startup(role: String, port: Int, partitionMap: collection.mutable.Map[Int, Int]): Unit = {
-    // Override the configuration of the port when specified as program argument
-    val config = ConfigFactory
-      .parseString(
-        s"""
-      akka.remote.artery.canonical.port=$port
-      akka.cluster.roles = [$role]
-      """)
-      .withFallback(ConfigFactory.load("cluster"))
+    val frontPort = shardPorts.last + 1
+    val frontRole = "front"
 
-    var nodesUp = collection.mutable.Set[Member]()
-    val png = initGraphPartitioning()
+    val frontConfig = createConfig(frontRole, frontPort)
+    val entityManager = ActorSystem[EntityManager.Command](
+      EntityManager(partitionMap, png.mainArray, pid),
+      "ClusterSystem",
+      frontConfig
+    )
 
-    if (role == "domainListener") {
-      // enable ClusterMemberEventListener for logging purposes
-      ActorSystem(ClusterMemberEventListener(nodesUp), "ClusterSystem", config)
-    } else {
-      val entityManager =
-        ActorSystem[EntityManager.Command](
-          EntityManager(partitionMap, png.mainArray),
-          "ClusterSystem", config
+    println("Blocking until all cluster members are up...")
+    blockUntilAllMembersUp(domainListener, nNodes)
+
+    println("Blocking until all EntityManagers are registered...")
+    val emRefs: collection.mutable.Map[Int, EMRef] =
+      blockUntilAllRefsRegistered[EntityManager.Command](
+        entityManager,
+        "entityManager",
+        numberOfShards + 1
+      )
+    println(s"Registered ${emRefs.size} EntityManagers.")
+
+    println("Blocking until all PartitionCoordinators are registered...")
+    for (pid <- 0 until numberOfShards) {
+      val emRef: EMRef = emRefs(pid)
+      emRef ! EntityManager.SpawnPC(pid)
+    }
+    val pcRefs: collection.mutable.Map[Int, PCRef] =
+      blockUntilAllRefsRegistered[PartitionCoordinator.Command](
+        entityManager,
+        "partitionCoordinator",
+        numberOfShards
+      )
+    println(s"Registered ${pcRefs.size} PartitionCoordinators.")
+
+    println("Blocking until the Global Coordinator is initialized and registered...")
+    entityManager ! EntityManager.SpawnGC()
+    val gcRefs: collection.mutable.Map[Int, GCRef] =
+      blockUntilAllRefsRegistered[GlobalCoordinator.Command](entityManager, "globalCoordinator", 1)
+    val gcRef = gcRefs(0)
+
+    blockInitGlobalCoordinator(gcRef, entityManager.scheduler, pcRefs, nNodes)
+    println(s"Registered the GlobalCoordinator.")
+    println("Broadcasting the Global Coordinator address to all Partition Coordinators")
+    broadcastGCtoPCs(gcRef, entityManager.scheduler)
+
+    println(s"Initializing ${nMains} Mains and ${nMirrors} Mirrors...")
+    for (main <- png.mainArray) {
+      entityManager ! EntityManager.Initialize(
+        VertexEntityType.Main.toString(),
+        main.id,
+        main.partition.id,
+        main.neighbors.map(n =>
+          new EntityId(VertexEntityType.Main.toString(), n.id, n.partition.id)
         )
+      )
+    }
 
-      if (role == "front") {
-        // init mains and mirrors
-        // TODO Decide whether to pass Partition object or just id.
-        // TODO Decide on whether to put here or elsewhere, the conversion of neighbour Actor to a simple string/EntityId form. Maybe entityIds should be constructed here?
-        // TODO Need to distinguish if neighbor is main or mirror, ASSUMES main right now. For passing along info to EntityManager 
-        for (main <- png.mainArray) {
-          entityManager ! EntityManager.Initialize(
-            VertexEntityType.Main.toString(),
-            main.id, main.partition.id,
-            main.neighbors.map(n => new EntityId(VertexEntityType.Main.toString(), n.id, n.partition.id))
-          )
-        }
-        
-        // increment mains and their mirrors
-        for (main <- png.mainArray) entityManager ! EntityManager.AddOne(VertexEntityType.Main.toString(), main.id, main.partition.id)
-        for (main <- png.mainArray) entityManager ! EntityManager.AddOne(VertexEntityType.Main.toString(), main.id, main.partition.id)
+    val nMainsInitialized = getNMainsInitialized(entityManager)
+    val nMirrorsInitialized = getNMirrorsInitialized(entityManager)
 
-        // see if increments have been propagated correctly to mirrors
-        for (main <- png.mainArray) {
-          entityManager ! EntityManager.GetSum(VertexEntityType.Main.toString(), main.id, main.partition.id)
-          for (mirror <- main.mirrors) {
-            entityManager ! EntityManager.GetSum(VertexEntityType.Mirror.toString(), mirror.id, mirror.partition.id)
-          }
-        }
+    println("Checking that all Mains, Mirrors have been initialized...")
+    println(s"Total Mains Initialized: $nMainsInitialized")
+    println(s"Total Mirrors Initialized: $nMirrorsInitialized")
+    assert(nMainsInitialized == nMains)
+    assert(nMirrorsInitialized == nMirrors)
+    //     after initialization, each partition coordinator should broadcast its location to its mains
+    for ((pid, pcRef) <- pcRefs) {
+      println(s"PC${pid} Broadcasting location to its main")
+      pcRef ! BroadcastLocation()
+    }
+    // ensure that the number of partition coordinator ref acknowledgements by main vertices equals the number of main
+    // vertices
+    var totalMainsAckd = 0
+    for ((pid, pcRef) <- pcRefs) {
+      val nMainsAckd = getNMainsAckd(entityManager, pcRef)
+      println(s"${nMainsAckd} mains acknowledged location of PC${pid}")
+      totalMainsAckd += nMainsAckd
+    }
+    println(s"Total Mains Acknowledged: $totalMainsAckd")
+    assert(totalMainsAckd == nMains)
+
+    // TODO at beginning send, BEGIN(0)
+    // increment mains and their mirrors
+    for (main <- png.mainArray)
+      entityManager ! EntityManager.AddOne(
+        VertexEntityType.Main.toString(),
+        main.id,
+        main.partition.id
+      )
+    for (main <- png.mainArray)
+      entityManager ! EntityManager.AddOne(
+        VertexEntityType.Main.toString(),
+        main.id,
+        main.partition.id
+      )
+
+    // see if increments have been propagated correctly to mirrors
+    for (main <- png.mainArray) {
+      entityManager ! EntityManager.GetSum(
+        VertexEntityType.Main.toString(),
+        main.id,
+        main.partition.id
+      )
+      for (mirror <- main.mirrors) {
+        entityManager ! EntityManager.GetSum(
+          VertexEntityType.Mirror.toString(),
+          mirror.id,
+          mirror.partition.id
+        )
       }
     }
   }

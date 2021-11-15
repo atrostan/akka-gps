@@ -35,7 +35,9 @@ object VertexEntity {
   case class Begin(stepNum: Int) extends VertexEntity.Command
   case object End extends VertexEntity.Command
   final case class NeighbourMessage(stepNum: Int, edgeVal: Option[EdgeValT],  msg: Option[MessageT]) extends VertexEntity.Command
-  // final case class NullNeighbourMessage(stepNum: Int) extends VertexEntity.Command
+
+  // PartitionCoordinator Commands
+  final case class NotifyLocation(replyTo: ActorRef[LocationResponse]) extends VertexEntity.Command
 
   // Orchestration
   final case class Initialize(
@@ -43,7 +45,7 @@ object VertexEntity {
       partitionId: Int,
       neighbors: ArrayBuffer[EntityId],
       mirrors: ArrayBuffer[EntityId],
-      partitionCoordinator: ActorRef[MainEntity.DummyPCCommand],
+      replyTo: ActorRef[MainEntity.InitializeResponse]
   ) extends VertexEntity.Command
 
   // GAS
@@ -54,7 +56,8 @@ object VertexEntity {
       vertexId: Int,
       partitionId: Int,
       main: EntityId,
-      neighs: ArrayBuffer[EntityId]
+      neighs: ArrayBuffer[EntityId],
+      replyTo: ActorRef[MirrorEntity.InitializeResponse]
   ) extends VertexEntity.Command
 
   // GAS
@@ -65,6 +68,8 @@ object VertexEntity {
   final case class GetValue(replyTo: ActorRef[VertexEntity.Response]) extends VertexEntity.Command
   case object EchoValue extends VertexEntity.Command
   case class SubTtl(entityId: String, ttl: Int) extends VertexEntity.Response
+
+  final case class LocationResponse(message: String) extends Response
 
   def apply(
       nodeAddress: String,

@@ -1,13 +1,11 @@
 package com.cluster.graph.entity
 
+import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
+import akka.actor.typed.{ActorRef, Behavior}
+import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityContext, EntityTypeKey}
+import com.CborSerializable
+
 import scala.concurrent.duration._
-import akka.actor.typed.{Behavior}
-import akka.actor.typed.scaladsl.{Behaviors, AbstractBehavior, ActorContext}
-import akka.cluster.sharding.typed.scaladsl.{
-  ClusterSharding,
-  EntityContext,
-  EntityTypeKey,
-}
 
 import VertexEntity._
 
@@ -38,13 +36,14 @@ class MirrorEntity(
       msg: VertexEntity.Command
   ): Behavior[VertexEntity.Command] = {
     msg match {
-      case InitializeMirror(vid, pid, m, neighs) =>
-        ctxLog("Initializing mirror")
-
+      case VertexEntity.InitializeMirror(vid, pid, m, neighs, replyTo) =>
         vertexId = vid
         partitionId = pid.toShort
-        main = m
         neighbors = neighs
+        main = m
+        val logStr = s"Received ask to initialize Mirror ${vertexId}_${partitionId}"
+        ctxLog(logStr)
+        replyTo ! InitializeResponse(s"Initialized Mirror ${vertexId}_${partitionId}")
         Behaviors.same
 
       // GAS Actions
@@ -113,4 +112,10 @@ object MirrorEntity {
       new MirrorEntity(ctx, nodeAddress, entityContext)
     })
   }
+
+  // Orchestration // TODO Move
+  sealed trait Response extends CborSerializable
+
+  final case class InitializeResponse(message: String) extends Response
+
 }

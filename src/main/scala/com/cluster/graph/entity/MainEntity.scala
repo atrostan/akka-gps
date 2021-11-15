@@ -12,6 +12,7 @@ import akka.cluster.sharding.typed.scaladsl.{
   EntityTypeKey
 }
 
+import com.cluster.graph.PartitionCoordinator
 import VertexEntity._
 
 // Vertex actor
@@ -23,12 +24,13 @@ class MainEntity(
     with VertexEntity {
 
   private var mirrors: ArrayBuffer[EntityId] = null
-  private var partitionCoordinator: ActorRef[MainEntity.DummyPCCommand] = null // TODO Change to ParitionCoordinator.Command
+  private var pcRef: ActorRef[PartitionCoordinator.Command] = null
 
   val mirrorCounter: mutable.Map[SuperStep, Int] = new mutable.HashMap()
   var active: Boolean = vertexProgram.defaultActivationStatus
   var currentValue: VertexValT = vertexProgram.defaultVertexValue
   val okToProceed: mutable.Map[SuperStep, Boolean] = new mutable.HashMap()
+  
   var value = 0 // Counter TEST ONLY
 
   // In order for vertices find refs for messages, they need to sharding.entityRefFor by entity id
@@ -47,13 +49,21 @@ class MainEntity(
       msg: VertexEntity.Command
   ): Behavior[VertexEntity.Command] = {
     msg match {
-      case Initialize(vid, pid, neigh, mrs, pc) =>
-        ctxLog("Initializing Main")
+      case VertexEntity.Initialize(vid, pid, neigh, mrs, replyTo) =>
         vertexId = vid
         partitionId = pid.toShort
         neighbors = neigh
         mirrors = mrs
-        partitionCoordinator = pc
+
+        val logStr = s"Received ask to initialize Main ${vertexId}_${partitionId}"
+        ctxLog(logStr)
+        replyTo ! InitializeResponse(s"Initialized Main ${vertexId}_${partitionId}")
+        Behaviors.same
+
+      // PartitionCoordinator Commands
+      case StorePCRef(pc, replyTo) =>
+        pcRef = pc
+        replyTo ! AckPCLocation()
         Behaviors.same
 
       // GAS Actions
@@ -125,7 +135,7 @@ class MainEntity(
     (active, total) match {
       case (false, None) => {
         // Vote to terminate
-        partitionCoordinator ! MainEntity.TerminationVote(stepNum)
+        partitionCoordinator ! MainEntity.TerminationVote(stepNum) // TODO change to new PC command
       }
       case _ => {
         // Continue
@@ -139,7 +149,7 @@ class MainEntity(
         }
         active = !vertexProgram.voteToHalt(oldVal, newVal)
         localScatter(stepNum, oldVal, newVal, sharding)
-        partitionCoordinator ! MainEntity.Done(stepNum)
+        partitionCoordinator ! MainEntity.Done(stepNum) // TODO change to new PC command
       }
     }
 
@@ -160,11 +170,6 @@ object MainEntity {
   val TypeKey: EntityTypeKey[VertexEntity.Command] =
     EntityTypeKey[VertexEntity.Command]("MainEntity")
 
-  // TODO DELETE Placeholder for paritionCoordinator message type
-  sealed trait DummyPCCommand
-  case class Done(stepNum: Int) extends DummyPCCommand
-  case class TerminationVote(stepNum: Int) extends DummyPCCommand
-
   def apply(
       nodeAddress: String,
       entityContext: EntityContext[VertexEntity.Command]
@@ -174,4 +179,20 @@ object MainEntity {
       new MainEntity(ctx, nodeAddress, entityContext)
     })
   }
+
+  // Orchestration // TODO Move these to VertexEntity
+  sealed trait Response extends CborSerializable
+
+  final case class StorePCRef(
+      pcRef: ActorRef[PartitionCoordinator.Command],
+      replyTo: ActorRef[AckPCLocation]
+  ) extends VertexEntity.Command
+
+  // Init Sync Response
+  final case class InitializeResponse(message: String) extends Response
+
+  final case class AckPCLocation() extends Response
+
+  // GAS
+  final case class MirrorTotal(stepNum: Int, total: Int) extends VertexEntity.Command
 }
