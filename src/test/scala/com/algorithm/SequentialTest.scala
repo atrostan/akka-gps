@@ -86,4 +86,70 @@ class SequentialTest extends FunSuite with Matchers {
     results should be (finalColours)
   }
 
+  test("Local Maxima Colouring - Bidirectional") {
+    val g: Graph[Int, WDiEdge] = Graph(
+      1~>2 % 1,
+      2~>3 % 1,
+      2~>4 % 1,
+      3~>1 % 1,
+      3~>4 % 1,
+      5~>3 % 1,
+    )
+    val finalColours = ListMap(
+      g.Node(1) -> Some(Colour(3)),
+      g.Node(2) -> Some(Colour(2)),
+      g.Node(3) -> Some(Colour(1)),
+      g.Node(4) -> Some(Colour(0)),
+      g.Node(5) -> Some(Colour(0)),
+    )
+    val results = SequentialRun(LocalMaximaColouringBidirectional, g)
+    results should be (finalColours)
+  }
+
+  test("WCC") {
+    val g: Graph[Int, WDiEdge] = Graph(
+      // Component 1
+      1~>2 % 1,
+      2~>3 % 1,
+      2~>4 % 1,
+      3~>1 % 1,
+      3~>4 % 1,
+      5~>3 % 1,
+      // Component 2
+      6~>7 % 1,
+      7~>8 % 1,
+      7~>9 % 1,
+      8~>6 % 1,
+      8~>9 % 1,
+      10~>8 % 1,
+      // Component 3
+      11~>12 % 1,
+      12~>13 % 1,
+      12~>14 % 1,
+      13~>11 % 1,
+      13~>14 % 1,
+      15~>13 % 1,
+    )
+    val finalComponents = ListMap(
+      g.Node(1) -> 1,
+      g.Node(2) -> 1,
+      g.Node(3) -> 1,
+      g.Node(4) -> 1,
+      g.Node(5) -> 1,
+      g.Node(6) -> 6,
+      g.Node(7) -> 6,
+      g.Node(8) -> 6,
+      g.Node(9) -> 6,
+      g.Node(10) -> 6,
+      g.Node(11) -> 11,
+      g.Node(12) -> 11,
+      g.Node(13) -> 11,
+      g.Node(14) -> 11,
+      g.Node(15) -> 11,
+    )
+    val results = SequentialRun(WCC, g)
+    results should be (finalComponents)
+  }
+
+
 }

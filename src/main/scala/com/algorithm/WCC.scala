@@ -1,11 +1,16 @@
 package com.algorithm
 
-object SSSP extends VertexProgram[Int, Int, Int, Int, Int] {
+import scalax.collection.edge.Implicits._
+import scalax.collection.Graph // or scalax.collection.mutable.Graph
+import scalax.collection.GraphPredef._, scalax.collection.GraphEdge._
+import scalax.collection.edge.WDiEdge
 
-  override val mode = VertexProgram.Outwards
+object WCC extends VertexProgram[Int, Int, Int, Int, Int] {
+
+  override val mode: VertexProgram.Mode = VertexProgram.Bidirectional
 
   override def gather(edgeVal: Int, message: Int): Int = {
-    edgeVal + message
+    message
   }
 
   override def sum(a: Int, b: Int): Int = {
@@ -13,13 +18,11 @@ object SSSP extends VertexProgram[Int, Int, Int, Int, Int] {
   }
 
   override def apply(superStepNumber: Int, thisVertexId: Int, oldVal: Int, total: Option[Int]): Int = {
-    if(thisVertexId == 0) {
-      0
-    } else {
-      total match {
-        case Some(value) => Math.min(oldVal, value)
-        case None => oldVal
-      }
+    if(superStepNumber == 0) {
+      thisVertexId
+    } else total match {
+      case Some(componentId) => Math.min(oldVal, componentId)
+      case None => oldVal
     }
   }
 
@@ -34,7 +37,7 @@ object SSSP extends VertexProgram[Int, Int, Int, Int, Int] {
 
   override def voteToHalt(oldVal: Int, newVal: Int): Boolean = true
 
-  override val defaultActivationStatus: Boolean = true
-
   override val defaultVertexValue: Int = Integer.MAX_VALUE
+
+  override val defaultActivationStatus: Boolean = true
 }
