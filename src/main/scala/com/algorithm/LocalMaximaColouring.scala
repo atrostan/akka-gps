@@ -4,8 +4,7 @@ case class Colour(num: Int) {
   require(num >= 0)
 }
 
-object LocalMaximaColouring extends VertexProgram[Int, Int, Int, Set[Int], Option[Colour]] {
-
+trait LocalMaximalColouringAbstractMode extends VertexProgram[Int, Int, Int, Set[Int], Option[Colour]] {
   override def gather(edgeVal: Int, message: Int): Set[Int] = Set(message)
 
   override def sum(a: Set[Int], b: Set[Int]): Set[Int] = a.union(b)
@@ -62,4 +61,13 @@ object LocalMaximaColouring extends VertexProgram[Int, Int, Int, Set[Int], Optio
   override val defaultVertexValue: Option[Colour] = None
 
   override val defaultActivationStatus: Boolean = true
+}
+
+object LocalMaximaColouring extends LocalMaximalColouringAbstractMode {
+  override val mode = VertexProgram.Outwards
+}
+
+object LocalMaximaColouringBidirectional extends LocalMaximalColouringAbstractMode {
+  override val mode: VertexProgram.Mode = VertexProgram.Bidirectional
+  
 }

@@ -2,6 +2,8 @@ package com.algorithm
 
 object SSSP extends VertexProgram[Int, Int, Int, Int, Int] {
 
+  override val mode = VertexProgram.Outwards
+
   override def gather(edgeVal: Int, message: Int): Int = {
     edgeVal + message
   }
