@@ -3,7 +3,7 @@ import akka.actor.typed
 import akka.actor.typed.ActorRefResolver
 import akka.actor.typed.scaladsl.adapter._
 import akka.serialization.Serialization
-import scalapb.TypeMapper
+// import scalapb.TypeMapper
 
 import java.nio.charset.StandardCharsets.UTF_8
 
@@ -18,8 +18,8 @@ object Conversion {
     Serialization.getCurrentTransportInformation().system.toTyped
   }
 
-  implicit def mapper[T]: TypeMapper[String, ActorRef[T]] =
-    TypeMapper[String, ActorRef[T]](resolver.resolveActorRef)(serialize)
+  // implicit def mapper[T]: TypeMapper[String, ActorRef[T]] =
+  //   TypeMapper[String, ActorRef[T]](resolver.resolveActorRef)(serialize)
 
   def deserialize[T](str: String) = resolver.resolveActorRef[T](str)
   def serialize[T](ref: ActorRef[T]) =
