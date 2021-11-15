@@ -1,8 +1,21 @@
 package com.cluster.graph.entity
 
-final class EntityId(eCl: String, vid: Int, pid: Int) {
-  val entityClass = eCl
-  val vertexId = vid
-  val partitionId = pid
-  override def toString(): String = s"${entityClass}_${vertexId}_${partitionId}"
+import akka.cluster.sharding.typed.scaladsl.EntityTypeKey
+
+final class EntityId(val eType: String, val vertexId: Int, val partitionId: Int) {
+  override def toString(): String = s"${eType}_${vertexId}_${partitionId}"
+
+  // A way of resolving the entity TypeKey
+  def getTypeKey(): EntityTypeKey[VertexEntity.Command] = {
+    VertexEntityType.withName(eType) match {
+      case VertexEntityType.Main   => MainEntity.TypeKey
+      case VertexEntityType.Mirror => MirrorEntity.TypeKey
+    }
+  }
+
+}
+object EntityId {
+  def getTypeFromString(entityId: String): String = {
+    entityId.split("_").head
+  }
 }

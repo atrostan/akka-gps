@@ -1,14 +1,14 @@
 package com.cluster.graph.entity
 
-import scala.concurrent.duration._
+import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
+import akka.actor.typed.{ActorRef, Behavior}
+import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityContext, EntityTypeKey}
+import akka.cluster.typed.Cluster
+import com.CborSerializable
+import com.cluster.graph.PartitionCoordinator
+
 import scala.collection.mutable.ArrayBuffer
-import akka.actor.typed.{Behavior}
-import akka.actor.typed.scaladsl.{Behaviors, AbstractBehavior, ActorContext}
-import akka.cluster.sharding.typed.scaladsl.{
-  ClusterSharding,
-  EntityContext,
-  EntityTypeKey,
-}
+import scala.concurrent.duration._
 
 // Vertex actor
 class MainEntity(
@@ -17,38 +17,39 @@ class MainEntity(
     entityContext: EntityContext[VertexEntity.Command]
 ) extends AbstractBehavior[VertexEntity.Command](ctx)
     with VertexEntity {
+
   import MainEntity._
 
+  // In order for vertices to be able to send messages, they need to sharding.entityRefFor by entity id
+  val cluster = Cluster(ctx.system)
+  val sharding = ClusterSharding(ctx.system)
   var vertexId = 0
   var partitionId = 0
+  var value = 0 // Counter TEST ONLY
+  // TODO neighbourCounter, summedTotal
   private var neighbors: ArrayBuffer[EntityId] = null
   private var mirrors: ArrayBuffer[EntityId] = null
-  // TODO neighbourCounter, summedTotal
-
-  var value = 0 // Counter TEST ONLY
-
-  // In order for vertices to be able to send messages, they need to sharding.entityRefFor by entity id
-  val sharding = ClusterSharding(ctx.system)
-
-  def ctxLog(event: String) {
-    ctx.log.info(
-      s"******************{} ${event} at {}, eid: {}",
-      ctx.self.path,
-      nodeAddress,
-      entityContext.entityId
-    )
-  }
+  private var pcRef: ActorRef[PartitionCoordinator.Command] = null
 
   override def onMessage(
       msg: VertexEntity.Command
   ): Behavior[VertexEntity.Command] = {
     msg match {
-      case Initialize(vid, pid, neigh, mrs) =>
-        ctxLog("Initializing Main")
+      case Initialize(vid, pid, neigh, mrs, replyTo) =>
         vertexId = vid
         partitionId = pid.toShort
         neighbors = neigh
         mirrors = mrs
+
+        val logStr = s"Received ask to initialize Main ${vertexId}_${partitionId}"
+        ctxLog(logStr)
+        replyTo ! InitializeResponse(s"Initialized Main ${vertexId}_${partitionId}")
+        Behaviors.same
+
+      // PartitionCoordinator Commands
+      case StorePCRef(pc, replyTo) =>
+        pcRef = pc
+        replyTo ! AckPCLocation()
         Behaviors.same
 
       // GAS Actions
@@ -93,21 +94,20 @@ class MainEntity(
         Behaviors.same
     }
   }
+
+  def ctxLog(event: String) {
+    ctx.log.info(
+      s"******************{} ${event} at {}, eid: {}",
+      ctx.self.path,
+      nodeAddress,
+      entityContext.entityId
+    )
+  }
 }
+
 object MainEntity {
   val TypeKey: EntityTypeKey[VertexEntity.Command] =
     EntityTypeKey[VertexEntity.Command]("MainEntity")
-
-  // Orchestration
-  final case class Initialize(
-      vertexId: Int,
-      partitionId: Int,
-      neighbors: ArrayBuffer[EntityId],
-      mirrors: ArrayBuffer[EntityId]
-  ) extends VertexEntity.Command
-
-  // GAS
-  final case class MirrorTotal(stepNum: Int, total: Int) extends VertexEntity.Command
 
   def apply(
       nodeAddress: String,
@@ -118,4 +118,29 @@ object MainEntity {
       new MainEntity(ctx, nodeAddress, entityContext)
     })
   }
+
+  // Orchestration
+  sealed trait Response extends CborSerializable
+
+  // Init Sync Command
+  final case class Initialize(
+      vertexId: Int,
+      partitionId: Int,
+      neighbors: ArrayBuffer[EntityId],
+      mirrors: ArrayBuffer[EntityId],
+      replyTo: ActorRef[InitializeResponse]
+  ) extends VertexEntity.Command
+
+  final case class StorePCRef(
+      pcRef: ActorRef[PartitionCoordinator.Command],
+      replyTo: ActorRef[AckPCLocation]
+  ) extends VertexEntity.Command
+
+  // Init Sync Response
+  final case class InitializeResponse(message: String) extends Response
+
+  final case class AckPCLocation() extends Response
+
+  // GAS
+  final case class MirrorTotal(stepNum: Int, total: Int) extends VertexEntity.Command
 }

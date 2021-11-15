@@ -1,13 +1,11 @@
 package com.cluster.graph.entity
 
+import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
+import akka.actor.typed.{ActorRef, Behavior}
+import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityContext, EntityTypeKey}
+import com.CborSerializable
+
 import scala.concurrent.duration._
-import akka.actor.typed.{Behavior}
-import akka.actor.typed.scaladsl.{Behaviors, AbstractBehavior, ActorContext}
-import akka.cluster.sharding.typed.scaladsl.{
-  ClusterSharding,
-  EntityContext,
-  EntityTypeKey,
-}
 
 class MirrorEntity(
     ctx: ActorContext[VertexEntity.Command],
@@ -15,37 +13,28 @@ class MirrorEntity(
     entityContext: EntityContext[VertexEntity.Command]
 ) extends AbstractBehavior[VertexEntity.Command](ctx)
     with VertexEntity {
+
   import MirrorEntity._
-
-  var vertexId = 0
-  var partitionId = 0
-  private var main: EntityId = null
-  // TODO mirrorCounter, neighbourCounter, summedTotal
-
-  var value = 0 // Counter TEST ONLY
 
   // In order for vertices to be able to send messages, they need to sharding.entityRefFor by entity id
   val sharding = ClusterSharding(ctx.system)
-
-  def ctxLog(event: String) {
-    ctx.log.info(
-      s"******************{} ${event} at {}, eid: {}",
-      ctx.self.path,
-      nodeAddress,
-      entityContext.entityId
-    )
-  }
+  var vertexId = 0
+  var partitionId = 0
+  // TODO mirrorCounter, neighbourCounter, summedTotal
+  var value = 0 // Counter TEST ONLY
+  private var main: EntityId = null
 
   override def onMessage(
       msg: VertexEntity.Command
   ): Behavior[VertexEntity.Command] = {
     msg match {
-      case InitializeMirror(vid, pid, m) =>
-        ctxLog("Initializing mirror")
-
+      case InitializeMirror(vid, pid, m, replyTo) =>
         vertexId = vid
         partitionId = pid.toShort
         main = m
+        val logStr = s"Received ask to initialize Mirror ${vertexId}_${partitionId}"
+        ctxLog(logStr)
+        replyTo ! InitializeResponse(s"Initialized Mirror ${vertexId}_${partitionId}")
         Behaviors.same
 
       // GAS Actions
@@ -91,20 +80,20 @@ class MirrorEntity(
 
     }
   }
+
+  def ctxLog(event: String) {
+    ctx.log.info(
+      s"******************{} ${event} at {}, eid: {}",
+      ctx.self.path,
+      nodeAddress,
+      entityContext.entityId
+    )
+  }
 }
+
 object MirrorEntity {
   val TypeKey: EntityTypeKey[VertexEntity.Command] =
     EntityTypeKey[VertexEntity.Command]("MirrorEntity")
-
-  // Orchestration
-  final case class InitializeMirror(
-      vertexId: Int,
-      partitionId: Int,
-      main: EntityId
-  ) extends VertexEntity.Command
-
-  // GAS
-  final case class ApplyResult(stepNum: Int, msg: String) extends VertexEntity.Command
 
   def apply(
       nodeAddress: String,
@@ -115,4 +104,21 @@ object MirrorEntity {
       new MirrorEntity(ctx, nodeAddress, entityContext)
     })
   }
+
+  // Orchestration
+  sealed trait Response extends CborSerializable
+
+  // Init
+  final case class InitializeMirror(
+      vertexId: Int,
+      partitionId: Int,
+      main: EntityId,
+      replyTo: ActorRef[InitializeResponse]
+  ) extends VertexEntity.Command
+
+  // GAS
+  final case class ApplyResult(stepNum: Int, msg: String) extends VertexEntity.Command
+
+  final case class InitializeResponse(message: String) extends Response
+
 }
