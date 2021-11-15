@@ -33,9 +33,9 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
   val cluster = Cluster(ctx.system)
   val sharding = ClusterSharding(ctx.system)
   val pcRefs = collection.mutable.Map[Int, PCRef]()
-  // counts the number of vertices in this partition that have finished their computation for a superstep
+  // counts the number of partitions that have finished their computation for a superstep
   var doneCounter = collection.mutable.Map[Int, Int]().withDefaultValue(0)
-  // counts the number of vertices in this partition that have voted to terminate their computation
+  // counts the number of partitions that have voted to terminate their computation
   var voteCounter = collection.mutable.Map[Int, Int]().withDefaultValue(0)
   var numPartitions = -1
   var numNodes = -1

@@ -155,7 +155,6 @@ object ClusterShardingApp {
     for ((pid, pcRef) <- pcRefs) {
       val nMainsAckd = getNMainsAckd(entityManager, pcRef)
       println(s"${nMainsAckd} mains acknowledged location of PC${pid}")
-      pcRef ! BroadcastLocation()
       totalMainsAckd += nMainsAckd
     }
     println(s"Total Mains Acknowledged: $totalMainsAckd")
