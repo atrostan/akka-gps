@@ -37,8 +37,22 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
   var doneCounter = collection.mutable.Map[Int, Int]().withDefaultValue(0)
   // counts the number of vertices in this partition that have voted to terminate their computation
   var voteCounter = collection.mutable.Map[Int, Int]().withDefaultValue(0)
-  var nPartitions = -1
+  var numPartitions = -1
   var numNodes = -1
+
+  def globallyDone(stepNum: Int): Boolean = {
+    doneCounter(stepNum) + voteCounter(stepNum) == numPartitions
+  }
+
+  def globallyTerminated(stepNum: Int): Boolean = {
+    voteCounter(stepNum) == numPartitions
+  }
+
+  def broadcastBEGINToPCs(stepNum: Int) = {
+    for ((pid, pcRef) <- pcRefs) {
+      pcRef ! PartitionCoordinator.BEGIN(stepNum)
+    }
+  }
 
   override def onMessage(msg: GlobalCoordinator.Command): Behavior[GlobalCoordinator.Command] = {
     msg match {
@@ -46,17 +60,31 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
       case Initialize(pcs, ns, replyTo) =>
         pcRefs ++= pcs
         numNodes = ns
-        nPartitions = pcRefs.size
+        numPartitions = pcRefs.size
         replyTo ! InitResponse("Initialized the Global Coordinator")
         Behaviors.same
 
+      case BEGIN() =>
+        broadcastBEGINToPCs(0)
+        Behaviors.same
+
+      case DONE(stepNum) =>
+        doneCounter(stepNum) += 1
+        if (globallyDone(stepNum)) {
+          broadcastBEGINToPCs(stepNum + 1)
+        }
+        Behaviors.same
+
+      case TerminationVote(stepNum) =>
+        voteCounter(stepNum) += 1
+        if (globallyTerminated(stepNum)) {
+          //TODO TERMINATE..?
+        } else if (globallyDone(stepNum)) {
+          broadcastBEGINToPCs(stepNum + 1)
+        }
+        Behaviors.same
+
       case BroadcastRef(gcRef, replyTo) =>
-//        val str = Conversion.serialize(gcRef)
-//        val deserialized = Conversion.deserialize(str)
-//
-//        println("str", str)
-//        println("deserialized", deserialized)
-//        println("deserialized == gcRef", deserialized == gcRef)
         for ((pid, pcRef) <- pcRefs) {
           val f: Future[PartitionCoordinator.UpdateGCResponse] = pcRef.ask(ref => {
             PartitionCoordinator.UpdateGC(gcRef, ref)
@@ -97,6 +125,10 @@ object GlobalCoordinator {
   sealed trait Response extends CborSerializable
 
   trait Command extends CborSerializable
+
+  case class DONE(stepNum: Int) extends Command
+  case class TerminationVote(stepNum: Int) extends Command
+  case class BEGIN() extends Command
 
   final case class GetPCRefs(replyTo: ActorRef[GetPCRefsResponse]) extends Command
 

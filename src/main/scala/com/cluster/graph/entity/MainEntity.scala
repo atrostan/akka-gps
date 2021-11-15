@@ -48,9 +48,7 @@ class MainEntity(
 
       // PartitionCoordinator Commands
       case StorePCRef(pc, replyTo) =>
-        println(s"pcref for ${vertexId}_${partitionId}before: ", pcRef)
         pcRef = pc
-        println(s"pcref for ${vertexId}_${partitionId}after: ", pcRef)
         replyTo ! AckPCLocation()
         Behaviors.same
 
@@ -140,6 +138,7 @@ object MainEntity {
       pcRef: ActorRef[PartitionCoordinator.Command],
       replyTo: ActorRef[AckPCLocation]
   ) extends VertexEntity.Command
+
 
   // GAS
   final case class MirrorTotal(stepNum: Int, total: Int) extends VertexEntity.Command

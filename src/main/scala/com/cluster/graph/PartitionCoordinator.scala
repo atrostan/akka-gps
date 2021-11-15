@@ -34,6 +34,7 @@ class PartitionCoordinator(
 ) extends AbstractBehavior[PartitionCoordinator.Command](ctx) {
 
   import PartitionCoordinator._
+
   val pcRef: ActorRef[PartitionCoordinator.Command] = ctx.self
   val waitTime = 10 seconds
   // In order for vertices to be able to send messages, they need to sharding.entityRefFor by entity id
@@ -51,19 +52,26 @@ class PartitionCoordinator(
   // counts the number of vertices in this partition that have voted to terminate their computation
   var voteCounter = collection.mutable.Map[Int, Int]().withDefaultValue(0)
 
-  def receiveDone(stepNum: Int) = {
-    doneCounter(stepNum) += 1
-    if (locallyDone(stepNum)) {
-      // send localDone(stepNum) to GlobalCoordinator
-    }
-  }
-
   def locallyDone(stepNum: Int): Boolean = {
     doneCounter(stepNum) + voteCounter(stepNum) == nMains
   }
 
-  def sendToMains() = {
-    for (m <- mains) {}
+  def locallyTerminated(stepNum: Int): Boolean = {
+    voteCounter(stepNum) == nMains
+  }
+
+  def blockBroadcastLocation(
+      mainERef: EntityRef[VertexEntity.Command]
+  ): Unit = {
+    val future: Future[MainEntity.AckPCLocation] =
+      mainERef.ask(ref => MainEntity.StorePCRef(pcRef, ref))
+    val broadcastResult = Await.result(future, waitTime)
+    broadcastResult match {
+      case MainEntity.AckPCLocation() =>
+        nMainsAckd += 1
+      case _ =>
+        println(s"${mainERef} failed to acknowledge ${pcRef}'s location'")
+    }
   }
 
   override def onMessage(
@@ -82,38 +90,46 @@ class PartitionCoordinator(
         replyTo ! UpdateGCResponse(response)
         Behaviors.same
 
-      case Done(stepNum) =>
+      case DONE(stepNum) =>
+        // TODO
+        doneCounter(stepNum) += 1
+        if (locallyDone(stepNum)) {
+          gcRef ! GlobalCoordinator.DONE(stepNum)
+        }
+        Behaviors.same
+
+      case TerminationVote(stepNum) =>
+        voteCounter(stepNum) += 1
+        if (locallyTerminated(stepNum)) {
+          gcRef ! GlobalCoordinator.TerminationVote(stepNum)
+        } else if (locallyDone(stepNum)) {
+          gcRef ! GlobalCoordinator.DONE(stepNum)
+        }
+
+        Behaviors.same
+      case BEGIN(stepNum) =>
+        for (m <- mains) {
+          val eRef = sharding.entityRefFor(VertexEntity.TypeKey, m.toString)
+//          eRef ! MainEntity.BEGIN(stepNum) TODO
+        }
+        Behaviors.same
+
+      case GetNMainsAckd(replyTo) =>
+        replyTo ! NMainsAckdResponse(nMainsAckd)
         Behaviors.same
 
       // Broadcast the partitionCoordinator ActorRef to all the main vertices
       // in this partition
       case BroadcastLocation() =>
-        println("mains in pc, ", mains)
         for (m <- mains) {
-          println(s"sending to: $m")
           val eRef = sharding.entityRefFor(VertexEntity.TypeKey, m.toString)
           blockBroadcastLocation(eRef)
-          //            eRef ? VertexEntity.NotifyLocation(ctx.self)
         }
-        println(s"sent location to ${nMainsAckd} mains")
         Behaviors.same
+
       case AdaptedResponse(message) =>
         ctx.log.info("Got response from hal: {}", message)
         Behaviors.same
-    }
-  }
-
-  def blockBroadcastLocation(
-      mainERef: EntityRef[VertexEntity.Command]
-  ): Unit = {
-    val future: Future[MainEntity.AckPCLocation] =
-      mainERef.ask(ref => MainEntity.StorePCRef(pcRef, ref))
-    val broadcastResult = Await.result(future, waitTime)
-    broadcastResult match {
-      case MainEntity.AckPCLocation() =>
-        nMainsAckd += 1
-      case _ =>
-        println(s"${mainERef} failed to acknowledge ${pcRef}'s location'")
     }
   }
 }
@@ -149,13 +165,16 @@ object PartitionCoordinator {
 
   final case class UpdateGC(gcRef: GCRef, replyTo: ActorRef[UpdateGCResponse]) extends Command
 
+  case class GetNMainsAckd(replyTo: ActorRef[NMainsAckdResponse]) extends Command
+
+  case class NMainsAckdResponse(n: Int) extends Response
+
   case class UpdateGCResponse(message: String) extends Response
 
-  case class Done(stepNum: Int) extends Command
-
+  case class DONE(stepNum: Int) extends Command
   case class TerminationVote(stepNum: Int) extends Command
 
-  case class Begin(stepNum: Int) extends Command
+  case class BEGIN(stepNum: Int) extends Command
 
   case class BroadcastLocation() extends Command
 

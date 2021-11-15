@@ -7,6 +7,7 @@ import akka.cluster.ClusterEvent
 import akka.cluster.sharding.typed.scaladsl.EntityRef
 import akka.util.Timeout
 import com.Typedefs.{GCRef, PCRef}
+import com.cluster.graph
 import com.cluster.graph.GlobalCoordinator.GlobalCoordinatorKey
 import com.cluster.graph.entity.{EntityId, MainEntity, MirrorEntity, VertexEntity}
 import com.graph.{Edge, Vertex}
@@ -87,6 +88,23 @@ object Init {
     }
   }
 
+  def getNMainsAckd(
+      entityManager: ActorSystem[EntityManager.Command],
+      pcRef: PCRef
+  ): Int = {
+    implicit val scheduler = entityManager.scheduler
+    val future: Future[PartitionCoordinator.NMainsAckdResponse] =
+      pcRef.ask(ref => PartitionCoordinator.GetNMainsAckd(ref))
+    val result = Await.result(future, waitTime)
+    result match {
+      case PartitionCoordinator.NMainsAckdResponse(totalMainsAckd) =>
+        totalMainsAckd
+      case _ =>
+        println("Failed to get number of ackd mains")
+        0
+    }
+  }
+
   def getNMainsInitialized(
       entityManager: ActorSystem[EntityManager.Command]
   ): Int = {
@@ -100,7 +118,7 @@ object Init {
         totalMainsInitialized
       case _ =>
         println("Failed to get number of initialized mains")
-        -1
+        0
     }
   }
 

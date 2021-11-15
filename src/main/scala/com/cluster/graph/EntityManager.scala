@@ -85,17 +85,6 @@ class EntityManager(
         replyTo ! RefResponseFromReceptionist(result)
         Behaviors.same
 
-//      case askPCRefFromReceptionist(pid, replyTo) =>
-//        val PartitionCoordinatorKey =
-//          ServiceKey[PartitionCoordinator.Command](s"partitionCoordinator${pid}")
-//        val f: Future[Receptionist.Listing] = ctx.system.receptionist.ask(replyTo =>
-//          Receptionist.Find(PartitionCoordinatorKey, replyTo)
-//        )
-//
-//        val PCListingResult = Await.result(f, waitTime)
-//        replyTo ! PCRefResponseFromReceptionist(PCListingResult)
-//        Behaviors.same
-
       case askGCRefFromReceptionist(replyTo) =>
         val f: Future[Receptionist.Listing] =
           ctx.system.receptionist.ask(replyTo => Receptionist.Find(GlobalCoordinatorKey, replyTo))
@@ -196,7 +185,7 @@ class EntityManager(
     entityRef ! cmd
     if (isMain(eid)) {
       val mirrors = mainArray(eid.vertexId).mirrors.map(m =>
-        new EntityId(MirrorEntity.getClass.toString(), m.id, m.partition.id)
+        new EntityId(VertexEntityType.Mirror.toString(), m.id, m.partition.id)
       )
       val mirrorEntityRefs =
         mirrors.map(mid => sharding.entityRefFor(VertexEntity.TypeKey, mid.toString))
