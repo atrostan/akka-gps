@@ -1,23 +1,76 @@
 package com.cluster.graph.entity
 
-import akka.actor.typed.scaladsl.Behaviors
+import scala.concurrent.duration._
+import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 import akka.actor.typed.{ActorRef, Behavior}
-import akka.cluster.sharding.typed.scaladsl.{EntityContext, EntityTypeKey}
+import akka.actor.typed.scaladsl.Behaviors
+import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityContext, EntityTypeKey}
 import com.CborSerializable
+import com.algorithm.LocalMaximaColouring
+import com.algorithm.Colour
+import com.cluster.graph.PartitionCoordinator
 
-trait VertexEntity {
-  var vertexId: Int
-  var partitionId: Short
-  var value: Int
-}
 object VertexEntity {
-  val TypeKey = EntityTypeKey[VertexEntity.Command]("VertexEntity")
-  val MAIN_ENTITY = MainEntity.getClass().toString()
-  val MIRROR_ENTITY = MirrorEntity.getClass().toString()
+  // Hard coded for now
+  val vertexProgram = LocalMaximaColouring
+  type EdgeValT = Int
+  type MessageT = Int
+  type AccumulatorT = Set[Int]
+  type VertexValT = Option[Colour]
+  type SuperStep = Int
 
-  def getEntityClass(entityId: String): String = {
-    entityId.split("_").head
-  }
+  sealed trait Command extends CborSerializable
+  trait Response extends CborSerializable
+
+  case object StopVertex extends Command
+  case object Idle extends Command
+
+  val TypeKey = EntityTypeKey[VertexEntity.Command]("VertexEntity")
+
+  // GAS General Commands
+  case class Begin(stepNum: Int) extends Command
+  case object End extends Command
+  final case class NeighbourMessage(stepNum: Int, edgeVal: Option[EdgeValT], msg: Option[MessageT])
+      extends Command
+
+  // PartitionCoordinator Commands
+  final case class NotifyLocation(replyTo: ActorRef[LocationResponse]) extends Command
+  final case class LocationResponse(message: String) extends Response
+  final case class StorePCRef(
+      pcRef: ActorRef[PartitionCoordinator.Command],
+      replyTo: ActorRef[AckPCLocation]
+  ) extends Command
+  final case class AckPCLocation() extends Response
+
+  // Orchestration
+  final case class Initialize(
+      vertexId: Int,
+      partitionId: Int,
+      neighbors: ArrayBuffer[EntityId],
+      mirrors: ArrayBuffer[EntityId],
+      replyTo: ActorRef[InitializeResponse]
+  ) extends Command
+  final case class InitializeMirror(
+      vertexId: Int,
+      partitionId: Int,
+      main: EntityId,
+      neighs: ArrayBuffer[EntityId],
+      replyTo: ActorRef[InitializeResponse]
+  ) extends Command
+
+  // Init Sync Response
+  final case class InitializeResponse(message: String) extends Response
+
+  // GAS
+  final case class MirrorTotal(stepNum: Int, total: Option[AccumulatorT]) extends Command
+  final case class ApplyResult(stepNum: Int, oldVal: VertexValT, newVal: VertexValT) extends Command
+
+  // Counter actions TESTING ONLY
+  case object Increment extends Command
+  final case class GetValue(replyTo: ActorRef[VertexEntity.Response]) extends Command
+  case object EchoValue extends Command
+  case class SubTtl(entityId: String, ttl: Int) extends VertexEntity.Response
 
   def apply(
       nodeAddress: String,
@@ -31,28 +84,72 @@ object VertexEntity {
         Behaviors.setup(ctx => new MirrorEntity(ctx, nodeAddress, entityContext))
     }
   }
-  // command/response typedef
-  trait Command extends CborSerializable
-  trait Response extends CborSerializable
 
-  // PartitionCoordinator Commands
-  final case class NotifyLocation(replyTo: ActorRef[LocationResponse]) extends VertexEntity.Command
+}
 
-  // GAS General Commands
-  final case object Begin extends VertexEntity.Command
-  final case object End extends VertexEntity.Command
-  final case class NeighbourMessage(stepNum: Int, msg: String) extends VertexEntity.Command
-  final case object StopVertex extends Command
-  final case object Idle extends Command
+trait VertexEntity {
+  import VertexEntity._
 
-  // Counter actions TESTING ONLY
-  final case object Increment extends VertexEntity.Command
-  final case object EchoValue extends VertexEntity.Command
-  final case class GetValue(replyTo: ActorRef[VertexEntity.Response]) extends VertexEntity.Command
+  // Vertex Characteristics/Topology
+  var vertexId: Int = 0
+  var partitionId: Short = 0
+  var partitionInDegree: Int = 0 // TODO need to get this
+  var neighbors: ArrayBuffer[EntityId] = ArrayBuffer()
+  // TODO edgeVal perhaps part of neighbours list (tuple of neigh,edgeVal). And have default value, from Vertex program?
 
-  final case class LocationResponse(message: String) extends Response
-  final case class SubTtl(entityId: String, ttl: Int) extends VertexEntity.Response
+  // Dynamic Computation Values
+  val summedTotal: mutable.Map[SuperStep, AccumulatorT] = new mutable.HashMap()
+  val neighbourCounter: mutable.Map[SuperStep, Int] = new mutable.HashMap()
+  var value: Int
 
+  def ctxLog(event: String): Unit
+
+  // Check if ready to perform role in the apply phase, then begin if ready
+  def applyIfReady(stepNum: SuperStep): Unit
+
+  def localScatter(
+      stepNum: SuperStep,
+      oldValue: VertexValT,
+      newValue: VertexValT,
+      shardingRef: ClusterSharding
+  ): Unit = {
+    val msgOption = vertexProgram.scatter(vertexId, oldValue, newValue)
+
+    for (neighbor <- neighbors) {
+      // TODO 0 edgeVal for now, we need to implement these. Depends on neighbor!
+      val cmd = msgOption match {
+        case None      => NeighbourMessage(stepNum + 1, None, None)
+        case Some(msg) => NeighbourMessage(stepNum + 1, Some(0), Some(msg))
+      }
+      val neighbourRef = shardingRef.entityRefFor(neighbor.getTypeKey(), neighbor.toString())
+      neighbourRef ! cmd
+    }
+  }
+
+  def reactToNeighbourMessage(neighbourMessage: NeighbourMessage): Behavior[Command] =
+    neighbourMessage match {
+      case NeighbourMessage(stepNum, edgeVal, msg) => {
+        ctxLog("Received neighbour msg " + msg)
+        (edgeVal, msg) match {
+          case (None, None) => {
+            // nothing
+          }
+          case (Some(edgeVal), Some(msg)) => {
+            val gatheredValue = vertexProgram.gather(edgeVal, msg)
+            val newSum = summedTotal.get(stepNum) match {
+              case Some(total) => vertexProgram.sum(total, gatheredValue)
+              case None        => gatheredValue
+            }
+            summedTotal.update(stepNum, newSum)
+
+          }
+          case (_, _) => ??? // Shouldn't happen
+        }
+        neighbourCounter.update(stepNum, neighbourCounter.getOrElse(stepNum, 0) + 1)
+        applyIfReady(stepNum)
+        Behaviors.same
+      }
+    }
 }
 
 // Types of VertexEntities available in shard // TODO Part of HACK, extra coupling

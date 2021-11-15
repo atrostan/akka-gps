@@ -290,15 +290,15 @@ object Init {
     * @param mirrors
     */
   def blockInitMain(
-      mainERef: EntityRef[MainEntity.Initialize],
+      mainERef: EntityRef[VertexEntity.Initialize],
       eid: EntityId,
       neighbors: ArrayBuffer[EntityId],
       mirrors: ArrayBuffer[EntityId],
       totalMainsInitialized: Int
   ): Int = {
     // async call to initialize main
-    val future: Future[MainEntity.InitializeResponse] = mainERef.ask(ref =>
-      MainEntity.Initialize(
+    val future: Future[VertexEntity.InitializeResponse] = mainERef.ask(ref =>
+      VertexEntity.Initialize(
         eid.vertexId,
         eid.partitionId,
         neighbors,
@@ -309,7 +309,7 @@ object Init {
     // blocking to wait until main vertex is initialized
     val mainInitResult = Await.result(future, waitTime)
     mainInitResult match {
-      case MainEntity.InitializeResponse(_) =>
+      case VertexEntity.InitializeResponse(_) =>
         totalMainsInitialized + 1
       case _ =>
         println(s"Failed to Initialize Main ${eid.vertexId}_${eid.partitionId}")
@@ -321,27 +321,30 @@ object Init {
     * initialized
     *
     * @param mirrorERef
-    * @param m
-    * @param eid
+    * @param m Entity id of the mirror vertex
+    * @param eid Entity id of its main vertex
+    * @param neighbors List of neighbours
     */
   def blockInitMirror(
       mirrorERef: EntityRef[VertexEntity.Command],
       m: EntityId,
       eid: EntityId,
+      neighbors: ArrayBuffer[EntityId],
       totalMirrorsInitialized: Int
   ): Int = {
-    val future: Future[MirrorEntity.InitializeResponse] = mirrorERef.ask(ref =>
-      MirrorEntity.InitializeMirror(
+    val future: Future[VertexEntity.InitializeResponse] = mirrorERef.ask(ref =>
+      VertexEntity.InitializeMirror(
         m.vertexId,
         m.partitionId,
         eid,
+        neighbors,
         ref
       )
     )
     // blocking to wait until mirror vertex is initialized
     val mirrorInitResult = Await.result(future, waitTime)
     mirrorInitResult match {
-      case MirrorEntity.InitializeResponse(_) =>
+      case VertexEntity.InitializeResponse(_) =>
         totalMirrorsInitialized + 1
       case _ =>
         println(s"Failed to Initialize Main ${eid.vertexId}_${eid.partitionId}")

@@ -9,6 +9,7 @@ import com.cluster.graph.entity.{EntityId, VertexEntityType}
 import com.typesafe.config.{Config, ConfigFactory}
 
 import scala.collection.mutable.ArrayBuffer
+import com.cluster.graph.entity.{EntityId, VertexEntityType}
 
 object ClusterShardingApp {
 
