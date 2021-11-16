@@ -66,7 +66,7 @@ object VertexEntity {
 
   // GAS
   final case class MirrorTotal(stepNum: Int, total: Option[AccumulatorT]) extends Command
-  final case class ApplyResult(stepNum: Int, oldVal: VertexValT, newVal: VertexValT) extends Command
+  final case class ApplyResult(stepNum: Int, oldVal: VertexValT, newVal: Option[VertexValT]) extends Command
 
   // Counter actions TESTING ONLY
   case object Increment extends Command
@@ -112,10 +112,10 @@ trait VertexEntity {
   def localScatter(
       stepNum: SuperStep,
       oldValue: VertexValT,
-      newValue: VertexValT,
+      newValue: Option[VertexValT],
       shardingRef: ClusterSharding
   ): Unit = {
-    val msgOption = vertexProgram.scatter(vertexId, oldValue, newValue)
+    val msgOption: Option[MessageT] = newValue.flatMap(vertexProgram.scatter(vertexId, oldValue, _))
 
     for (neighbor <- neighbors) {
       // TODO 0 edgeVal for now, we need to implement these. Depends on neighbor!

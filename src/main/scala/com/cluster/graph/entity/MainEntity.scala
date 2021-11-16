@@ -137,6 +137,14 @@ class MainEntity(
         // Vote to terminate
         println(s"step: ${stepNum} term v${this.vertexId}: color:${currentValue}")
         pcRef ! PartitionCoordinator.TerminationVote(stepNum) // TODO change to new PC command
+
+        // Still have to send null messages to neighbours
+        localScatter(stepNum, currentValue, None, sharding)
+        val cmd = ApplyResult(stepNum, currentValue, None)
+        for (mirror <- mirrors) {
+          val mirrorRef = sharding.entityRefFor(VertexEntity.TypeKey, mirror.toString())
+          mirrorRef ! cmd
+        }
       }
       case _ => {
         // Continue
@@ -145,7 +153,7 @@ class MainEntity(
         val oldVal = currentValue
         currentValue = newVal
         println(s"step: ${stepNum} cont v${this.vertexId}: color:${currentValue}")
-        val cmd = ApplyResult(stepNum, oldVal, newVal)
+        val cmd = ApplyResult(stepNum, oldVal, Some(newVal))
         for (mirror <- mirrors) {
 //          println(mirror)
           val mirrorRef = sharding.entityRefFor(VertexEntity.TypeKey, mirror.toString())
@@ -153,7 +161,7 @@ class MainEntity(
           mirrorRef ! cmd
         }
         active = !vertexProgram.voteToHalt(oldVal, newVal)
-        localScatter(stepNum, oldVal, newVal, sharding)
+        localScatter(stepNum, oldVal, Some(newVal), sharding)
         pcRef ! PartitionCoordinator.DONE(stepNum) // TODO change to new PC command
       }
     }
