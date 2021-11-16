@@ -49,6 +49,7 @@ object VertexEntity {
       partitionId: Int,
       neighbors: ArrayBuffer[EntityId],
       mirrors: ArrayBuffer[EntityId],
+      inDegree: Int,
       replyTo: ActorRef[InitializeResponse]
   ) extends Command
   final case class InitializeMirror(
@@ -56,6 +57,7 @@ object VertexEntity {
       partitionId: Int,
       main: EntityId,
       neighs: ArrayBuffer[EntityId],
+      inDegree: Int,
       replyTo: ActorRef[InitializeResponse]
   ) extends Command
 
@@ -99,7 +101,7 @@ trait VertexEntity {
 
   // Dynamic Computation Values
   val summedTotal: mutable.Map[SuperStep, AccumulatorT] = new mutable.HashMap()
-  val neighbourCounter: mutable.Map[SuperStep, Int] = new mutable.HashMap()
+  val neighbourCounter: mutable.Map[SuperStep, Int] = new mutable.HashMap().withDefaultValue(0)
   var value: Int
 
   def ctxLog(event: String): Unit
@@ -121,7 +123,7 @@ trait VertexEntity {
         case None      => NeighbourMessage(stepNum + 1, None, None)
         case Some(msg) => NeighbourMessage(stepNum + 1, Some(0), Some(msg))
       }
-      val neighbourRef = shardingRef.entityRefFor(neighbor.getTypeKey(), neighbor.toString())
+      val neighbourRef = shardingRef.entityRefFor(VertexEntity.TypeKey, neighbor.toString())
       neighbourRef ! cmd
     }
   }
@@ -146,6 +148,7 @@ trait VertexEntity {
           case (_, _) => ??? // Shouldn't happen
         }
         neighbourCounter.update(stepNum, neighbourCounter.getOrElse(stepNum, 0) + 1)
+//        println(this.vertexId, neighbourCounter(stepNum), this.partitionId)
         applyIfReady(stepNum)
         Behaviors.same
       }

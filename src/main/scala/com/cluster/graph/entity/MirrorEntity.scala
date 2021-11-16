@@ -36,11 +36,12 @@ class MirrorEntity(
       msg: VertexEntity.Command
   ): Behavior[VertexEntity.Command] = {
     msg match {
-      case VertexEntity.InitializeMirror(vid, pid, m, neighs, replyTo) =>
+      case VertexEntity.InitializeMirror(vid, pid, m, neighs, inDeg, replyTo) =>
         vertexId = vid
         partitionId = pid.toShort
         neighbors = neighs
         main = m
+        partitionInDegree = inDeg
         val logStr = s"Received ask to initialize Mirror ${vertexId}_${partitionId}"
         ctxLog(logStr)
         replyTo ! VertexEntity.InitializeResponse(s"Initialized Mirror ${vertexId}_${partitionId}")
@@ -93,7 +94,7 @@ class MirrorEntity(
   override def applyIfReady(stepNum: SuperStep): Unit = {
     if (neighbourCounter(stepNum) == partitionInDegree) {
       val cmd = MirrorTotal(stepNum, summedTotal.get(stepNum))
-      val mainRef = sharding.entityRefFor(MainEntity.TypeKey, main.toString())
+      val mainRef = sharding.entityRefFor(VertexEntity.TypeKey, main.toString())
       mainRef ! cmd
     }
   }

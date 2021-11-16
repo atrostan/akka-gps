@@ -10,6 +10,7 @@ import com.typesafe.config.{Config, ConfigFactory}
 
 import scala.collection.mutable.ArrayBuffer
 import com.cluster.graph.entity.{EntityId, VertexEntityType}
+import com.preprocessing.partitioning.oneDim.{Main, Mirror}
 
 object ClusterShardingApp {
 
@@ -70,7 +71,7 @@ object ClusterShardingApp {
       partCoordMap(pid) = pcPort
 
       val entityManager = ActorSystem[EntityManager.Command](
-        EntityManager(partitionMap, png.mainArray, pid),
+        EntityManager(partitionMap, png.mainArray, pid, png.inEdgePartition),
         "ClusterSystem",
         shardConfig
       )
@@ -84,7 +85,7 @@ object ClusterShardingApp {
 
     val frontConfig = createConfig(frontRole, frontPort)
     val entityManager = ActorSystem[EntityManager.Command](
-      EntityManager(partitionMap, png.mainArray, pid),
+      EntityManager(partitionMap, png.mainArray, pid, png.inEdgePartition),
       "ClusterSystem",
       frontConfig
     )
@@ -132,7 +133,12 @@ object ClusterShardingApp {
         main.id,
         main.partition.id,
         main.neighbors.map(n =>
-          new EntityId(VertexEntityType.Main.toString(), n.id, n.partition.id)
+          n match {
+            case neighbor: Main =>
+              new EntityId(VertexEntityType.Main.toString(), neighbor.id, neighbor.partition.id)
+            case neighbor: Mirror =>
+              new EntityId(VertexEntityType.Mirror.toString(), neighbor.id, neighbor.partition.id)
+          }
         )
       )
     }
@@ -160,36 +166,36 @@ object ClusterShardingApp {
     }
     println(s"Total Mains Acknowledged: $totalMainsAckd")
     assert(totalMainsAckd == nMains)
-
+    gcRef ! GlobalCoordinator.BEGIN()
     // TODO at beginning send, BEGIN(0)
     // increment mains and their mirrors
-    for (main <- png.mainArray)
-      entityManager ! EntityManager.AddOne(
-        VertexEntityType.Main.toString(),
-        main.id,
-        main.partition.id
-      )
-    for (main <- png.mainArray)
-      entityManager ! EntityManager.AddOne(
-        VertexEntityType.Main.toString(),
-        main.id,
-        main.partition.id
-      )
+//    for (main <- png.mainArray)
+//      entityManager ! EntityManager.AddOne(
+//        VertexEntityType.Main.toString(),
+//        main.id,
+//        main.partition.id
+//      )
+//    for (main <- png.mainArray)
+//      entityManager ! EntityManager.AddOne(
+//        VertexEntityType.Main.toString(),
+//        main.id,
+//        main.partition.id
+//      )
 
     // see if increments have been propagated correctly to mirrors
-    for (main <- png.mainArray) {
-      entityManager ! EntityManager.GetSum(
-        VertexEntityType.Main.toString(),
-        main.id,
-        main.partition.id
-      )
-      for (mirror <- main.mirrors) {
-        entityManager ! EntityManager.GetSum(
-          VertexEntityType.Mirror.toString(),
-          mirror.id,
-          mirror.partition.id
-        )
-      }
-    }
+//    for (main <- png.mainArray) {
+//      entityManager ! EntityManager.GetSum(
+//        VertexEntityType.Main.toString(),
+//        main.id,
+//        main.partition.id
+//      )
+//      for (mirror <- main.mirrors) {
+//        entityManager ! EntityManager.GetSum(
+//          VertexEntityType.Mirror.toString(),
+//          mirror.id,
+//          mirror.partition.id
+//        )
+//      }
+//    }
   }
 }

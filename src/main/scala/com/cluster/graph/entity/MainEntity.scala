@@ -22,10 +22,10 @@ class MainEntity(
   private var mirrors: ArrayBuffer[EntityId] = null
   private var pcRef: ActorRef[PartitionCoordinator.Command] = null
 
-  val mirrorCounter: mutable.Map[SuperStep, Int] = new mutable.HashMap()
+  val mirrorCounter: mutable.Map[SuperStep, Int] = new mutable.HashMap().withDefaultValue(0)
   var active: Boolean = vertexProgram.defaultActivationStatus
   var currentValue: VertexValT = vertexProgram.defaultVertexValue
-  val okToProceed: mutable.Map[SuperStep, Boolean] = new mutable.HashMap()
+  val okToProceed: mutable.Map[SuperStep, Boolean] = new mutable.HashMap().withDefaultValue(false)
 
   var value = 0 // Counter TEST ONLY
 
@@ -45,14 +45,18 @@ class MainEntity(
       msg: VertexEntity.Command
   ): Behavior[VertexEntity.Command] = {
     msg match {
-      case VertexEntity.Initialize(vid, pid, neigh, mrs, replyTo) =>
+      case VertexEntity.Initialize(vid, pid, neigh, mrs, inDeg, replyTo) =>
         vertexId = vid
         partitionId = pid.toShort
         neighbors = neigh
         mirrors = mrs
+        partitionInDegree = inDeg
+
 
         val logStr = s"Received ask to initialize Main ${vertexId}_${partitionId}"
         ctxLog(logStr)
+        ctxLog(neighbors.toString())
+        ctxLog(mirrors.toString())
         replyTo ! InitializeResponse(s"Initialized Main ${vertexId}_${partitionId}")
         Behaviors.same
 
@@ -131,16 +135,21 @@ class MainEntity(
     (active, total) match {
       case (false, None) => {
         // Vote to terminate
+        println(s"step: ${stepNum} term v${this.vertexId}: color:${currentValue}")
         pcRef ! PartitionCoordinator.TerminationVote(stepNum) // TODO change to new PC command
       }
       case _ => {
         // Continue
+
         val newVal = vertexProgram.apply(stepNum, vertexId, currentValue, total)
         val oldVal = currentValue
         currentValue = newVal
+        println(s"step: ${stepNum} cont v${this.vertexId}: color:${currentValue}")
         val cmd = ApplyResult(stepNum, oldVal, newVal)
         for (mirror <- mirrors) {
-          val mirrorRef = sharding.entityRefFor(mirror.getTypeKey(), mirror.toString())
+//          println(mirror)
+          val mirrorRef = sharding.entityRefFor(VertexEntity.TypeKey, mirror.toString())
+//          println(mirrorRef)
           mirrorRef ! cmd
         }
         active = !vertexProgram.voteToHalt(oldVal, newVal)

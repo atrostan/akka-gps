@@ -81,6 +81,7 @@ class PartitionCoordinator(
       case Initialize(mns, pid, replyTo) =>
         mains ++= mns
         partitionId = pid
+        nMains = mains.length
         replyTo ! InitializeResponse(
           s"Initialized PC on partition ${pid} with ${mains.length} mains"
         )
@@ -93,9 +94,10 @@ class PartitionCoordinator(
         Behaviors.same
 
       case DONE(stepNum) =>
-        // TODO
         doneCounter(stepNum) += 1
+        println(s"pc ${partitionId} : step ${stepNum}: done counter${doneCounter(stepNum)}; vote counter ${voteCounter(stepNum)}")
         if (locallyDone(stepNum)) {
+          println("locally done")
           gcRef ! GlobalCoordinator.DONE(stepNum)
         }
         Behaviors.same
@@ -112,7 +114,7 @@ class PartitionCoordinator(
       case BEGIN(stepNum) =>
         for (m <- mains) {
           val eRef = sharding.entityRefFor(VertexEntity.TypeKey, m.toString)
-//          eRef ! MainEntity.BEGIN(stepNum) TODO
+          eRef ! VertexEntity.Begin(stepNum)
         }
         Behaviors.same
 

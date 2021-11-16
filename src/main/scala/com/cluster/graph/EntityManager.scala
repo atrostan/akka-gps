@@ -26,7 +26,8 @@ class EntityManager(
     ctx: ActorContext[EntityManager.Command],
     partitionMap: collection.mutable.Map[Int, Int],
     mainArray: Array[Main],
-    pid: Int
+    pid: Int,
+    inEdgePartition: Array[collection.mutable.Map[Int, Int]]
 ) extends AbstractBehavior[EntityManager.Command](ctx) {
 
   import EntityManager._
@@ -159,14 +160,19 @@ class EntityManager(
         new EntityId(VertexEntityType.Mirror.toString(), m.id, m.partition.id)
       )
       // TODO Pass partitionInDegree to all vertices being created
+      val nInEdges = inEdgePartition(eid.partitionId)(eid.vertexId)
+//      println("eid main, ", eid.partitionId, eid.vertexId, nInEdges)
       totalMainsInitialized =
-        blockInitMain(mainERef, eid, neighbors, mirrors, totalMainsInitialized)
+        blockInitMain(mainERef, eid, neighbors, mirrors, nInEdges, totalMainsInitialized)
       for (m <- mirrors) {
         val mirrorERef: EntityRef[VertexEntity.Command] =
           sharding.entityRefFor(VertexEntity.TypeKey, m.toString)
         // TODO Need to add neighbours 
         val neighbors = ArrayBuffer[EntityId]()
-        totalMirrorsInitialized = blockInitMirror(mirrorERef, m, eid, neighbors, totalMirrorsInitialized)
+        val nInEdges = inEdgePartition(m.partitionId)(m.vertexId)
+//        println("eid mirror, ", m.partitionId, m.vertexId, nInEdges)
+
+        totalMirrorsInitialized = blockInitMirror(mirrorERef, m, eid, neighbors, nInEdges, totalMirrorsInitialized)
       }
     }
   }
@@ -197,12 +203,13 @@ object EntityManager {
   def apply(
       partitionMap: collection.mutable.Map[Int, Int],
       mainArray: Array[Main],
-      pid: Int
+      pid: Int,
+      inEdgePartition: Array[collection.mutable.Map[Int, Int]]
   ): Behavior[EntityManager.Command] = Behaviors.setup(ctx => {
     val EntityManagerKey =
       ServiceKey[EntityManager.Command](s"entityManager${pid}")
     ctx.system.receptionist ! Receptionist.Register(EntityManagerKey, ctx.self)
-    new EntityManager(ctx, partitionMap, mainArray, pid)
+    new EntityManager(ctx, partitionMap, mainArray, pid, inEdgePartition)
   })
   // command/response typedef
   sealed trait Command extends CborSerializable
