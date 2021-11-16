@@ -70,14 +70,19 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
 
       case DONE(stepNum) =>
         doneCounter(stepNum) += 1
+        println(s"gc : step ${stepNum}: done counter${doneCounter(stepNum)}")
+
         if (globallyDone(stepNum)) {
+          println("globally done")
           broadcastBEGINToPCs(stepNum + 1)
         }
         Behaviors.same
 
       case TerminationVote(stepNum) =>
+
         voteCounter(stepNum) += 1
         if (globallyTerminated(stepNum)) {
+          println("TERMINATION")
           //TODO TERMINATE..?
         } else if (globallyDone(stepNum)) {
           broadcastBEGINToPCs(stepNum + 1)

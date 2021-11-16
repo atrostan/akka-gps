@@ -27,7 +27,7 @@ object Init {
   def initGraphPartitioning(nPartitions: Int): Partitioning = {
     val edges = ArrayBuffer[Edge]()
     val nNodes: Int = 8
-    val nEdges: Int = 14
+    val nEdges: Int = 20
 
     val v0 = Vertex(0)
     val v1 = Vertex(1)
@@ -53,9 +53,16 @@ object Init {
     val e12 = Edge(v7, v0)
     val e13 = Edge(v0, v7)
 
+    val e14 = Edge(v1, v0)
+    val e15 = Edge(v2, v1)
+    val e16 = Edge(v3, v2)
+    val e17 = Edge(v1, v3)
+    val e18 = Edge(v6, v5)
+    val e19 = Edge(v7, v6)
+
     val vs = ArrayBuffer(v0, v1, v2, v3, v4)
 
-    val es = ArrayBuffer(e0, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13)
+    val es = ArrayBuffer(e0, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19)
     // create partitioning data structure
     val png = Partitioning(nPartitions, es, nNodes, nEdges)
     println("Partitioning result:")
@@ -290,26 +297,28 @@ object Init {
     * @param mirrors
     */
   def blockInitMain(
-      mainERef: EntityRef[MainEntity.Initialize],
+      mainERef: EntityRef[VertexEntity.Initialize],
       eid: EntityId,
       neighbors: ArrayBuffer[EntityId],
       mirrors: ArrayBuffer[EntityId],
+      inDegree: Int,
       totalMainsInitialized: Int
   ): Int = {
     // async call to initialize main
-    val future: Future[MainEntity.InitializeResponse] = mainERef.ask(ref =>
-      MainEntity.Initialize(
+    val future: Future[VertexEntity.InitializeResponse] = mainERef.ask(ref =>
+      VertexEntity.Initialize(
         eid.vertexId,
         eid.partitionId,
         neighbors,
         mirrors,
+        inDegree,
         ref
       )
     )
     // blocking to wait until main vertex is initialized
     val mainInitResult = Await.result(future, waitTime)
     mainInitResult match {
-      case MainEntity.InitializeResponse(_) =>
+      case VertexEntity.InitializeResponse(_) =>
         totalMainsInitialized + 1
       case _ =>
         println(s"Failed to Initialize Main ${eid.vertexId}_${eid.partitionId}")
@@ -321,27 +330,32 @@ object Init {
     * initialized
     *
     * @param mirrorERef
-    * @param m
-    * @param eid
+    * @param m Entity id of the mirror vertex
+    * @param eid Entity id of its main vertex
+    * @param neighbors List of neighbours
     */
   def blockInitMirror(
       mirrorERef: EntityRef[VertexEntity.Command],
       m: EntityId,
       eid: EntityId,
+      neighbors: ArrayBuffer[EntityId],
+      inDegree: Int,
       totalMirrorsInitialized: Int
   ): Int = {
-    val future: Future[MirrorEntity.InitializeResponse] = mirrorERef.ask(ref =>
-      MirrorEntity.InitializeMirror(
+    val future: Future[VertexEntity.InitializeResponse] = mirrorERef.ask(ref =>
+      VertexEntity.InitializeMirror(
         m.vertexId,
         m.partitionId,
         eid,
+        neighbors,
+        inDegree,
         ref
       )
     )
     // blocking to wait until mirror vertex is initialized
     val mirrorInitResult = Await.result(future, waitTime)
     mirrorInitResult match {
-      case MirrorEntity.InitializeResponse(_) =>
+      case VertexEntity.InitializeResponse(_) =>
         totalMirrorsInitialized + 1
       case _ =>
         println(s"Failed to Initialize Main ${eid.vertexId}_${eid.partitionId}")

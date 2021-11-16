@@ -12,7 +12,8 @@ class Partitioning(P: Int, n: Int, m: Int) {
   val nNodes: Int = n
   val nEdges: Int = m
   var partitions: ArrayBuffer[Partition] = ArrayBuffer[Partition]()
-
+  val inEdgePartition = Array.fill[collection.mutable.Map[Int, Int]](nPartitions)(collection.mutable.Map[Int, Int]().withDefaultValue(0))
+//    collection.mutable.Map[Int, Int]().withDefaultValue(0)
   def replicationFactor(): Double = {
     // (all mirrors) / nNodes
     // http://www.vldb.org/pvldb/vol12/p321-gill.pdf: "average number of proxies per node"
@@ -27,7 +28,7 @@ class Partitioning(P: Int, n: Int, m: Int) {
       this.assign(e)
       val src: Vertex = e.source
       val dest: Vertex = e.dest
-
+//      inEdgeMap(dest.id) += 1
       // create a main actor (reference) for src, dest, if doesn't exist already
       for (v: Vertex <- Seq(src, dest)) {
         if (mainArray(v.id) == null) {
@@ -55,7 +56,9 @@ class Partitioning(P: Int, n: Int, m: Int) {
       for (edge <- partition.edges) {
         val src: Vertex = edge.source
         val dest: Vertex = edge.dest
+        inEdgePartition(partition.id)(dest.id) += 1
         val srcMain: Main = mainArray(src.id)
+
 
         if (getMainPartition(dest) == partition) { // dest is a main in this partition
           val destRef: Main = mainArray(dest.id)

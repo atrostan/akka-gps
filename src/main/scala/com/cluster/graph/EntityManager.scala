@@ -8,7 +8,6 @@ import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityRef}
 import akka.cluster.typed.Cluster
 import akka.util.Timeout
 import com.CborSerializable
-import com.cluster.graph.GlobalCoordinator.GlobalCoordinatorKey
 import com.cluster.graph.Init.{blockInitMain, blockInitMirror, blockInitPartitionCoordinator}
 import com.cluster.graph.entity._
 import com.preprocessing.partitioning.oneDim.Main
@@ -27,7 +26,8 @@ class EntityManager(
     ctx: ActorContext[EntityManager.Command],
     partitionMap: collection.mutable.Map[Int, Int],
     mainArray: Array[Main],
-    pid: Int
+    pid: Int,
+    inEdgePartition: Array[collection.mutable.Map[Int, Int]]
 ) extends AbstractBehavior[EntityManager.Command](ctx) {
 
   import EntityManager._
@@ -154,17 +154,25 @@ class EntityManager(
       sharding.entityRefFor(VertexEntity.TypeKey, eid.toString)
     // initialize all mirrors of main // TODO Review main check is needed anymore
     if (isMain(eid)) {
-      val mainERef: EntityRef[MainEntity.Initialize] =
+      val mainERef: EntityRef[VertexEntity.Initialize] =
         sharding.entityRefFor(VertexEntity.TypeKey, eid.toString)
       val mirrors = mainArray(eid.vertexId).mirrors.map(m =>
         new EntityId(VertexEntityType.Mirror.toString(), m.id, m.partition.id)
       )
+      // TODO Pass partitionInDegree to all vertices being created
+      val nInEdges = inEdgePartition(eid.partitionId)(eid.vertexId)
+//      println("eid main, ", eid.partitionId, eid.vertexId, nInEdges)
       totalMainsInitialized =
-        blockInitMain(mainERef, eid, neighbors, mirrors, totalMainsInitialized)
+        blockInitMain(mainERef, eid, neighbors, mirrors, nInEdges, totalMainsInitialized)
       for (m <- mirrors) {
         val mirrorERef: EntityRef[VertexEntity.Command] =
           sharding.entityRefFor(VertexEntity.TypeKey, m.toString)
-        totalMirrorsInitialized = blockInitMirror(mirrorERef, m, eid, totalMirrorsInitialized)
+        // TODO Need to add neighbours 
+        val neighbors = ArrayBuffer[EntityId]()
+        val nInEdges = inEdgePartition(m.partitionId)(m.vertexId)
+//        println("eid mirror, ", m.partitionId, m.vertexId, nInEdges)
+
+        totalMirrorsInitialized = blockInitMirror(mirrorERef, m, eid, neighbors, nInEdges, totalMirrorsInitialized)
       }
     }
   }
@@ -195,12 +203,13 @@ object EntityManager {
   def apply(
       partitionMap: collection.mutable.Map[Int, Int],
       mainArray: Array[Main],
-      pid: Int
+      pid: Int,
+      inEdgePartition: Array[collection.mutable.Map[Int, Int]]
   ): Behavior[EntityManager.Command] = Behaviors.setup(ctx => {
     val EntityManagerKey =
       ServiceKey[EntityManager.Command](s"entityManager${pid}")
     ctx.system.receptionist ! Receptionist.Register(EntityManagerKey, ctx.self)
-    new EntityManager(ctx, partitionMap, mainArray, pid)
+    new EntityManager(ctx, partitionMap, mainArray, pid, inEdgePartition)
   })
   // command/response typedef
   sealed trait Command extends CborSerializable

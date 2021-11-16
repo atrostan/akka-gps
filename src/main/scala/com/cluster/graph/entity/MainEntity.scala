@@ -1,14 +1,15 @@
 package com.cluster.graph.entity
 
-import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
-import akka.actor.typed.{ActorRef, Behavior}
-import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityContext, EntityTypeKey}
-import akka.cluster.typed.Cluster
-import com.CborSerializable
-import com.cluster.graph.PartitionCoordinator
-
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable
 import scala.concurrent.duration._
+import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable
+import akka.actor.typed.{Behavior, ActorRef}
+import akka.actor.typed.scaladsl.{Behaviors, AbstractBehavior, ActorContext}
+import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityContext, EntityTypeKey}
+
+import com.cluster.graph.PartitionCoordinator
+import VertexEntity._
 
 // Vertex actor
 class MainEntity(
@@ -18,31 +19,44 @@ class MainEntity(
 ) extends AbstractBehavior[VertexEntity.Command](ctx)
     with VertexEntity {
 
-  import MainEntity._
-
-  // In order for vertices to be able to send messages, they need to sharding.entityRefFor by entity id
-  val cluster = Cluster(ctx.system)
-  val sharding = ClusterSharding(ctx.system)
-  var vertexId = 0
-  var partitionId = 0
-  var value = 0 // Counter TEST ONLY
-  // TODO neighbourCounter, summedTotal
-  private var neighbors: ArrayBuffer[EntityId] = null
   private var mirrors: ArrayBuffer[EntityId] = null
   private var pcRef: ActorRef[PartitionCoordinator.Command] = null
+
+  val mirrorCounter: mutable.Map[SuperStep, Int] = new mutable.HashMap().withDefaultValue(0)
+  var active: Boolean = vertexProgram.defaultActivationStatus
+  var currentValue: VertexValT = vertexProgram.defaultVertexValue
+  val okToProceed: mutable.Map[SuperStep, Boolean] = new mutable.HashMap().withDefaultValue(false)
+
+  var value = 0 // Counter TEST ONLY
+
+  // In order for vertices find refs for messages, they need to sharding.entityRefFor by entity id
+  val sharding = ClusterSharding(ctx.system)
+
+  override def ctxLog(event: String): Unit = {
+    ctx.log.info(
+      s"******************{} ${event} at {}, eid: {}",
+      ctx.self.path,
+      nodeAddress,
+      entityContext.entityId
+    )
+  }
 
   override def onMessage(
       msg: VertexEntity.Command
   ): Behavior[VertexEntity.Command] = {
     msg match {
-      case Initialize(vid, pid, neigh, mrs, replyTo) =>
+      case VertexEntity.Initialize(vid, pid, neigh, mrs, inDeg, replyTo) =>
         vertexId = vid
         partitionId = pid.toShort
         neighbors = neigh
         mirrors = mrs
+        partitionInDegree = inDeg
+
 
         val logStr = s"Received ask to initialize Main ${vertexId}_${partitionId}"
         ctxLog(logStr)
+        ctxLog(neighbors.toString())
+        ctxLog(mirrors.toString())
         replyTo ! InitializeResponse(s"Initialized Main ${vertexId}_${partitionId}")
         Behaviors.same
 
@@ -53,22 +67,43 @@ class MainEntity(
         Behaviors.same
 
       // GAS Actions
-      case VertexEntity.Begin =>
-        ctxLog("Beginning compute")
+      case VertexEntity.Begin(0) => {
+        ctxLog("Beginning compute: Step 0")
+        applyAndScatter(0, None)
+        Behaviors.same
+      }
+
+      case VertexEntity.Begin(stepNum) => {
+        ctxLog(s"Beginning compute: Step ${stepNum}")
+        okToProceed(stepNum) = true
+        applyIfReady(stepNum)
         value += 1
         Behaviors.same
+      }
+
       case VertexEntity.End =>
         ctxLog("Ordered to stop " + msg)
-        // TODO Implement
+        // TODO Needed?
         Behaviors.same
-      case VertexEntity.NeighbourMessage(stepNum, msg) =>
-        ctxLog("Received neighbour msg " + msg)
-        // TODO Implement
+
+      case c: VertexEntity.NeighbourMessage => reactToNeighbourMessage(c)
+
+      case MirrorTotal(stepNum, mirrorTotal) => {
+        ctxLog("Received mirror total " + mirrorTotal)
+        mirrorTotal match {
+          case None => ()
+          case Some(mirrorTotal) => {
+            val newTotal = summedTotal.get(stepNum) match {
+              case None                => mirrorTotal
+              case Some(existingTotal) => vertexProgram.sum(existingTotal, mirrorTotal)
+            }
+            summedTotal.update(stepNum, newTotal)
+          }
+        }
+        mirrorCounter.update(stepNum, mirrorCounter.getOrElse(stepNum, 0) + 1)
+        applyIfReady(stepNum)
         Behaviors.same
-      case MirrorTotal(stepNum, total) =>
-        ctxLog("Received mirror total " + total)
-        // TODO Implement
-        Behaviors.same
+      }
 
       case VertexEntity.Idle =>
         entityContext.shard ! ClusterSharding.Passivate(ctx.self)
@@ -95,13 +130,44 @@ class MainEntity(
     }
   }
 
-  def ctxLog(event: String) {
-    ctx.log.info(
-      s"******************{} ${event} at {}, eid: {}",
-      ctx.self.path,
-      nodeAddress,
-      entityContext.entityId
-    )
+  // Perform apply and scatter phases
+  def applyAndScatter(stepNum: SuperStep, total: Option[AccumulatorT]): Unit = {
+    (active, total) match {
+      case (false, None) => {
+        // Vote to terminate
+        println(s"step: ${stepNum} term v${this.vertexId}: color:${currentValue}")
+        pcRef ! PartitionCoordinator.TerminationVote(stepNum) // TODO change to new PC command
+      }
+      case _ => {
+        // Continue
+
+        val newVal = vertexProgram.apply(stepNum, vertexId, currentValue, total)
+        val oldVal = currentValue
+        currentValue = newVal
+        println(s"step: ${stepNum} cont v${this.vertexId}: color:${currentValue}")
+        val cmd = ApplyResult(stepNum, oldVal, newVal)
+        for (mirror <- mirrors) {
+//          println(mirror)
+          val mirrorRef = sharding.entityRefFor(VertexEntity.TypeKey, mirror.toString())
+//          println(mirrorRef)
+          mirrorRef ! cmd
+        }
+        active = !vertexProgram.voteToHalt(oldVal, newVal)
+        localScatter(stepNum, oldVal, newVal, sharding)
+        pcRef ! PartitionCoordinator.DONE(stepNum) // TODO change to new PC command
+      }
+    }
+
+  }
+
+  override def applyIfReady(stepNum: SuperStep): Unit = {
+    if (
+      okToProceed(stepNum) &&
+      mirrorCounter(stepNum) == mirrors.length &&
+      neighbourCounter(stepNum) == partitionInDegree
+    ) {
+      applyAndScatter(stepNum, summedTotal.get(stepNum))
+    }
   }
 }
 
@@ -118,29 +184,4 @@ object MainEntity {
       new MainEntity(ctx, nodeAddress, entityContext)
     })
   }
-
-  // Orchestration
-  sealed trait Response extends CborSerializable
-
-  // Init Sync Command
-  final case class Initialize(
-      vertexId: Int,
-      partitionId: Int,
-      neighbors: ArrayBuffer[EntityId],
-      mirrors: ArrayBuffer[EntityId],
-      replyTo: ActorRef[InitializeResponse]
-  ) extends VertexEntity.Command
-
-  final case class StorePCRef(
-      pcRef: ActorRef[PartitionCoordinator.Command],
-      replyTo: ActorRef[AckPCLocation]
-  ) extends VertexEntity.Command
-
-  // Init Sync Response
-  final case class InitializeResponse(message: String) extends Response
-
-  final case class AckPCLocation() extends Response
-
-  // GAS
-  final case class MirrorTotal(stepNum: Int, total: Int) extends VertexEntity.Command
 }

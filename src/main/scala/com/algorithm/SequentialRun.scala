@@ -2,19 +2,19 @@ package com.algorithm
 
 import scalax.collection.Graph
 import scalax.collection.edge.WDiEdge
+import com.algorithm.VertexProgram.Outwards
+import com.algorithm.VertexProgram.Inwards
+import com.algorithm.VertexProgram.Bidirectional
 
 object SequentialRun {
   def apply[VertexIdT, MessageT, AccumulatorT, VertexValT](
       vertexProgram: VertexProgram[VertexIdT, Int, MessageT, AccumulatorT, VertexValT],
       graph: Graph[VertexIdT, WDiEdge]
-  )(
-      initialStates: Map[graph.NodeT, VertexValT],
-      initialActiveMap: Map[graph.NodeT, Boolean]
   ): Map[graph.NodeT, VertexValT] = {
 
     type Vertex = graph.NodeT
     // var vertices: Seq[Int] = graph.nodes.toSeq.mzap({x:graph.NodeT => x.value})
-    var vertices = graph.nodes
+    val vertices = graph.nodes
     var states = vertices.map(v => (v -> vertexProgram.defaultVertexValue)).toMap
     var activeMap = vertices.map(v => (v -> vertexProgram.defaultActivationStatus)).toMap
 
@@ -31,9 +31,16 @@ object SequentialRun {
     def sendMessage(dest: Vertex, edge: graph.EdgeT, msg: MessageT): Unit = {
       nextMailboxes = nextMailboxes.updated(dest, nextMailboxes(dest).updated(edge, msg))
     }
-    def outEdges(src: Vertex): Iterable[graph.EdgeT] = {
-      graph.edges.filter(edge => edge._1 == src)
-    }
+    
+    def relevantEdges(v: Vertex): Iterable[(graph.NodeT, graph.EdgeT)] = {
+      val outEdges = graph.edges.filter(edge => edge._1 == v).map(edge => (edge._2, edge))
+      val inEdges = graph.edges.filter(edge => edge._2 == v).map(edge => (edge._1, edge))
+      vertexProgram.mode match {
+        case Outwards => outEdges
+        case Inwards => inEdges
+        case Bidirectional => outEdges ++ inEdges
+      }
+    } 
 
     var progressFlag = true
 
@@ -73,11 +80,10 @@ object SequentialRun {
 
         // Scatter
         for {
-          edge <- outEdges(vtx)
-          dest = edge._2
+          (msgDest, edge) <- relevantEdges(vtx)
           msg <- vertexProgram.scatter(vtx, oldVal, newVal)
         } {
-          sendMessage(dest, edge, msg)
+          sendMessage(msgDest, edge, msg)
         }
 
         val activation = !vertexProgram.voteToHalt(oldVal, newVal)

@@ -63,11 +63,11 @@ class PartitionCoordinator(
   def blockBroadcastLocation(
       mainERef: EntityRef[VertexEntity.Command]
   ): Unit = {
-    val future: Future[MainEntity.AckPCLocation] =
-      mainERef.ask(ref => MainEntity.StorePCRef(pcRef, ref))
+    val future: Future[VertexEntity.AckPCLocation] =
+      mainERef.ask(ref => VertexEntity.StorePCRef(pcRef, ref))
     val broadcastResult = Await.result(future, waitTime)
     broadcastResult match {
-      case MainEntity.AckPCLocation() =>
+      case VertexEntity.AckPCLocation() =>
         nMainsAckd += 1
       case _ =>
         println(s"${mainERef} failed to acknowledge ${pcRef}'s location'")
@@ -81,6 +81,7 @@ class PartitionCoordinator(
       case Initialize(mns, pid, replyTo) =>
         mains ++= mns
         partitionId = pid
+        nMains = mains.length
         replyTo ! InitializeResponse(
           s"Initialized PC on partition ${pid} with ${mains.length} mains"
         )
@@ -93,9 +94,10 @@ class PartitionCoordinator(
         Behaviors.same
 
       case DONE(stepNum) =>
-        // TODO
         doneCounter(stepNum) += 1
+        println(s"pc ${partitionId} : step ${stepNum}: done counter${doneCounter(stepNum)}; vote counter ${voteCounter(stepNum)}")
         if (locallyDone(stepNum)) {
+          println("locally done")
           gcRef ! GlobalCoordinator.DONE(stepNum)
         }
         Behaviors.same
@@ -112,7 +114,7 @@ class PartitionCoordinator(
       case BEGIN(stepNum) =>
         for (m <- mains) {
           val eRef = sharding.entityRefFor(VertexEntity.TypeKey, m.toString)
-//          eRef ! MainEntity.BEGIN(stepNum) TODO
+          eRef ! VertexEntity.Begin(stepNum)
         }
         Behaviors.same
 
