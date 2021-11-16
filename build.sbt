@@ -32,9 +32,9 @@ lazy val `akka-gps` = project
     scalaVersion := "2.12.15",
     Compile / scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-Xlog-reflective-calls", "-Xlint", "-target:jvm-1.8"),
     Compile / javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation"),
-    Compile / PB.targets := Seq(
-      scalapb.gen() -> (Compile / sourceManaged).value / "scalapb"
-    ),
+    // Compile / PB.targets := Seq(
+    //   scalapb.gen() -> (Compile / sourceManaged).value / "scalapb"
+    // ),
     run / javaOptions ++= Seq("-Xms128m", "-Xmx8G", "-XX:+UseG1GC", "-Djava.library.path=./target/native",  "-Dlog4j.configuration=src/main/resources/log4j.properties"),
     libraryDependencies ++= Seq(
       "com.typesafe.akka" %% "akka-actor-typed"            % akkaVersion,
