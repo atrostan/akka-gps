@@ -1,7 +1,5 @@
-import CommandExample._
 import com.typesafe.sbt.SbtMultiJvm.MultiJvmKeys.MultiJvm
 import com.typesafe.sbt.SbtMultiJvm.multiJvmSettings
-
 
 name := "akka-gps"
 
@@ -59,8 +57,6 @@ lazy val `akka-gps` = project
     // disable parallel tests
     Test / parallelExecution := false,
     licenses := Seq(("CC0", url("http://creativecommons.org/publicdomain/zero/1.0"))),
-    commands ++= Seq(hello, changeColor, partitionBySource1D)
-
   )
   .configs(MultiJvm)
 
