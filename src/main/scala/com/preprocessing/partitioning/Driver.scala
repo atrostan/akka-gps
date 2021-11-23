@@ -1,16 +1,11 @@
 package com.preprocessing.partitioning
 
-//import akka.protobufv3.internal.UInt32Value
-//import jdk.nashorn.internal.ir.debug.ObjectSizeCalculator.getObjectSize
-import com.preprocessing.partitioning.Util.{createPartitionDir, hybridPartitioningPreprocess, parseArgs, readEdgeList}
-import org.apache.spark.rdd.RDD
-import org.apache.spark.{SparkConf, SparkContext}
+import com.Typedefs.{EitherEdgeRDD, UnweightedEdge, WeightedEdge}
+import com.preprocessing.partitioning.PartitioningType.{Hybrid, OneDim, TwoDim}
+import com.preprocessing.partitioning.Util.{createPartitionDir, edgeListMatchAndPersist, hybridPartitioningPreprocess, parseArgs, persist, readEdgeList}
+import org.apache.spark.{Partitioner, SparkConf, SparkContext}
 
-import java.lang.instrument.Instrumentation
-
-// runMain com.preprocessing.partitioning.Driver --nNodes 1005 --nEdges 24929 --inputFilename "src/main/resources/graphs/email-Eu-core/reset/part-00000" --outputDirectoryName "src/main/resources/graphs/email-Eu-core/partitioned" --sep " " --partitioner 3 --threshold 100 --numPartitions 4 --partitionBySource 0
-
-// runMain com.preprocessing.partitioning.Driver --nNodes 8 --nEdges 32 --inputFilename "src/main/resources/graphs/8rmat" --outputDirectoryName "src/main/resources/graphs/8rmat/partitions" --sep " " --partitioner 3 --threshold 100 --numPartitions 4 --partitionBySource 0
+// runMain com.preprocessing.partitioning.Driver --nNodes 986 --nEdges 24929 --inputFilename "src/main/resources/graphs/email-Eu-core/reset/part-00000" --outputDirectoryName "src/main/resources/graphs/email-Eu-core/partitions" --sep " " --partitioner 2 --threshold 100 --numPartitions 4 --partitionBySource "false" --isWeighted "true"
 
 object Driver {
 
@@ -21,7 +16,11 @@ object Driver {
     val conf = new SparkConf()
       .setAppName(appName)
       .setMaster("local[*]")
+
     val sc = new SparkContext(conf)
+    val hadoopConfig = sc.hadoopConfiguration
+    hadoopConfig.set("fs.hdfs.impl", classOf[org.apache.hadoop.hdfs.DistributedFileSystem].getName)
+    hadoopConfig.set("fs.file.impl", classOf[org.apache.hadoop.fs.LocalFileSystem].getName)
 
     val pArgs = parseArgs(args)
     val threshold = pArgs.threshold
@@ -30,61 +29,60 @@ object Driver {
     val partitioner = pArgs.partitioner
     val numPartitions = pArgs.numPartitions
     val outdir = pArgs.outputDirectory
-    val partitionBySource = pArgs.partitionBy
+    val partitionBySource: Boolean = pArgs.partitionBySource.toBoolean
     var partitionBySourceDirName = ""
+    val isWeighted = pArgs.isWeighted
+    var wtStr = ""
 
-    if (partitionBySource) {
-      partitionBySourceDirName = "bySrc"
-    } else {
-      partitionBySourceDirName = "byDest"
-    }
+    if (partitionBySource) partitionBySourceDirName = "bySrc" else partitionBySourceDirName = "byDest"
+    if (isWeighted) wtStr = "Weighted" else wtStr = "Unweighted"
 
+    val partitioningType = PartitioningType(partitioner)
+    var execStartString: String = ""
+    execStartString += s"${partitioningType.toString} partitioning $wtStr $infile ${partitionBySourceDirName} " +
+      s"into $numPartitions partitions " +
+      s"with degree threshold = $threshold qualifying a vertex as high degree."
+    println(execStartString)
     println("reading edge list...")
-    val edgeList = readEdgeList(sc, infile, sep)
+    val edgeList = readEdgeList(sc, infile, sep, isWeighted)
 
-    partitioner match {
-      case 1 =>
-        println("1D Partitioning")
+    partitioningType match {
+      case OneDim =>
         val partitionDir = outdir + s"/1d/$partitionBySourceDirName/"
+        println(s"1D Partitioning to ${partitionDir}")
         createPartitionDir(partitionDir, true)
         val partitioner = new OneDimPartitioner(numPartitions, partitionBySource)
+        edgeListMatchAndPersist(edgeList, partitioner, partitionDir)
 
-
-      case 2 =>
-        println("2D Partitioning")
+      case TwoDim =>
         val partitionDir = outdir + s"/2d/$partitionBySourceDirName/"
+        println(s"2D Partitioning to to ${partitionDir}")
         createPartitionDir(partitionDir, true)
         val partitioner = new TwoDimPartitioner(numPartitions, partitionBySource)
+        edgeListMatchAndPersist(edgeList, partitioner, partitionDir)
 
-      case 3 =>
-        println("Hybrid Partitioning")
-        val partitionDir = outdir + "/hybrid/"
+      case Hybrid =>
+        val partitionDir = outdir + s"/hybrid/$partitionBySourceDirName/"
+        println(s"Hybrid Partitioning to ${partitionDir}")
+        createPartitionDir(partitionDir, true)
         val partitioner = new HybridCutPartitioner(numPartitions, partitionBySource)
+        val flaggedEdgeList = hybridPartitioningPreprocess(edgeList, threshold, partitionBySource)
 
-        try {
-          val flaggedEdgeList = hybridPartitioningPreprocess(edgeList, threshold)
-          flaggedEdgeList
-            .partitionBy(partitioner)
-            .mapPartitionsWithIndex {
-              (index, itr) => itr.toList.map(x => x + "#" + index).iterator
-            }.saveAsTextFile(partitionDir)
-        } catch {
-          case e: org.apache.hadoop.mapred.FileAlreadyExistsException => println("File already exists, please delete the existing file")
+        flaggedEdgeList match {
+          case Right(flaggedEdgeList) => // Unweighted, flagged, indexed
+            val el = flaggedEdgeList
+              .partitionBy(partitioner)
+              .map(t => t._1._1)
+              .map(r => s"${r._1} ${r._2}")
+            persist[String](el, partitionDir, 0)
+          case Left(flaggedEdgeList) => // Weighted, flagged, indexed
+            val el = flaggedEdgeList
+              .partitionBy(partitioner)
+              .map(t => t._1._1)
+              .map(r => s"${r._1} ${r._2} ${r._3}")
+            persist[String](el, partitionDir, 0)
         }
     }
     sc.stop()
-
-//    val inEdgeFile = "src/main/resources/graphs/email-Eu-core/reset/inedge"
-//    val degreeMap = "src/main/resources/graphs/email-Eu-core/reset/degreeMap"
-    //
-    //    inEdgeList.map(e => s"${e._1} ${e._2}").coalesce(1, false).saveAsTextFile(inEdgeFile)
-    //    sc.parallelize(inDegrees.toSeq).map(e => s"${e._1} ${e._2}").coalesce(1, false).saveAsTextFile(degreeMap)
-
-
-//    flaggedEdgeList
-//      .partitionBy(new HybridCutPartitioner(numPartitions))
-//      .map(el => el._1)
-//      .saveAsTextFile(outdir)
-
   }
 }

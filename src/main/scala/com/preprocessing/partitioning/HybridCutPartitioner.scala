@@ -8,14 +8,20 @@ class HybridCutPartitioner(nPartitions: Int, partitionBySource: Boolean) extends
   override def getPartition(key: Any): Int = key match {
     case ((u: Int, v: Int), vertexIsHighDegree: Boolean) =>
       if (partitionBySource) {
-        val uIsHighDegree = vertexIsHighDegree
-        if (uIsHighDegree) v % numPartitions
+        if (vertexIsHighDegree) v % numPartitions
         else u % numPartitions
       } else {
-        val vIsHighDegree = vertexIsHighDegree
-        if (vIsHighDegree) u % numPartitions
+        if (vertexIsHighDegree) u % numPartitions
         else v % numPartitions
       }
 
+    case ((u: Int, v: Int, w: Int), vertexIsHighDegree: Boolean) =>
+      if (partitionBySource) {
+        if (vertexIsHighDegree) v % numPartitions
+        else u % numPartitions
+      } else {
+        if (vertexIsHighDegree) u % numPartitions
+        else v % numPartitions
+      }
   }
 }

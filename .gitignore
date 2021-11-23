@@ -85,3 +85,9 @@ project/**/metals.sbt
 /sandbox/
 /logs/*
 tmp
+
+_SUCCESS
+._SUCCESS.crc
+MANIFEST.MF
+.part-*.crc
+part-*

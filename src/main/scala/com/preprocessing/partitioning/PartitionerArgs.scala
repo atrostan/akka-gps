@@ -9,7 +9,8 @@ class PartitionerArgs(
                        part: Int,
                        thresh: Int,
                        nPartitions: Int,
-                       pb: Boolean
+                       pb: String,
+                       iw: Boolean
                      ) {
   val numNodes = nNodes
   val numEdges = nEdges
@@ -19,7 +20,8 @@ class PartitionerArgs(
   val partitioner = part
   val threshold = thresh
   val numPartitions = nPartitions
-  val partitionBy = pb
+  val partitionBySource = pb
+  val isWeighted = iw
 
   override def toString() : String = {
     var argStr = ""
@@ -31,7 +33,8 @@ class PartitionerArgs(
     argStr += s"$partitioner\t"
     argStr += s"$threshold\t"
     argStr += s"$numPartitions\t"
-    argStr += s"$partitionBy\t"
+    argStr += s"$partitionBySource\t"
+    argStr += s"$isWeighted\t"
     argStr
   }
 }

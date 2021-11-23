@@ -4,10 +4,24 @@ import akka.actor.typed.ActorRef
 import akka.cluster.Member
 import com.cluster.graph.{EntityManager, GlobalCoordinator, PartitionCoordinator}
 import com.preprocessing.partitioning.oneDim.Mirror
+import org.apache.spark.rdd.RDD
 
 /** Store all global type aliases here (typedefs)
   */
 object Typedefs {
+
+  type UnweightedEdge = (Int, Int)
+  type WeightedEdge = (Int, Int, Int)
+  type EitherEdge = Either[RDD[WeightedEdge], RDD[UnweightedEdge]]
+
+  type IndexedUnweightedEdge = (Long, (Int, Int))
+  type IndexedWeightedEdge = (Long, (Int, Int, Int))
+
+  type FlaggedWeightedEdge = (((Int, Int, Int), Boolean), Long)
+  type FlaggedUnweightedEdge = (((Int, Int), Boolean), Long)
+  type EitherFlaggedEdgeRDD = Either[RDD[FlaggedWeightedEdge], RDD[FlaggedUnweightedEdge]]
+
+  type EitherEdgeRDD = Either[RDD[IndexedWeightedEdge], RDD[IndexedUnweightedEdge]]
 
   // the address of a PartitionCoordinator
   type PCRef = ActorRef[PartitionCoordinator.Command]

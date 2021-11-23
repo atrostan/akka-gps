@@ -43,7 +43,14 @@ object ClusterShardingApp {
 
     val png = initGraphPartitioning(numberOfShards)
     val nodesUp = collection.mutable.Set[Member]()
-
+    for (m <- png.mainArray) {
+      var s = ""
+      s += s"${m.toString()}\n"
+      s += s"neighbours:\t${m.neighbors.toString()}\n"
+      s += s"mirrors:\t${m.mirrors.toString()}\n"
+      println(s)
+    }
+    return
     println(s"Initializing cluster with ${nNodes} compute nodes")
 
     println("Initializing domain listener")
