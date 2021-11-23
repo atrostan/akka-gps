@@ -5,7 +5,7 @@ import com.preprocessing.partitioning.PartitioningType.{Hybrid, OneDim, TwoDim}
 import com.preprocessing.partitioning.Util.{createPartitionDir, edgeListMatchAndPersist, hybridPartitioningPreprocess, parseArgs, persist, readEdgeList}
 import org.apache.spark.{Partitioner, SparkConf, SparkContext}
 
-// runMain com.preprocessing.partitioning.Driver --nNodes 986 --nEdges 24929 --inputFilename "src/main/resources/graphs/email-Eu-core/reset/part-00000" --outputDirectoryName "src/main/resources/graphs/email-Eu-core/partitions" --sep " " --partitioner 2 --threshold 100 --numPartitions 4 --partitionBySource "false" --isWeighted "true"
+// runMain com.preprocessing.partitioning.Driver --nNodes 986 --nEdges 24929 --inputFilename "src/main/resources/graphs/email-Eu-core/compressed/part-00000" --outputDirectoryName "src/main/resources/graphs/email-Eu-core/partitions" --sep " " --partitioner 3 --threshold 100 --numPartitions 4 --partitionBySource "false" --isWeighted "true"
 
 object Driver {
 
