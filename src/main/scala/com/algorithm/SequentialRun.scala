@@ -83,12 +83,12 @@ object SequentialRun {
         // Scatter
         for {
           (msgDest, edge) <- relevantEdges(vtx)
-          msg <- vertexProgram.scatter(vertexInfoMap(vtx), oldVal, newVal)
+          msg <- vertexProgram.scatter(superstep, vertexInfoMap(vtx), oldVal, newVal)
         } {
           sendMessage(msgDest, edge, msg)
         }
 
-        val activation = !vertexProgram.voteToHalt(oldVal, newVal)
+        val activation = !vertexProgram.voteToHalt(superstep, oldVal, newVal)
         activeMap = activeMap.updated(vtx, activation)
       }
 

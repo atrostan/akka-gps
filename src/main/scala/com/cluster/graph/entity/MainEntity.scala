@@ -162,7 +162,7 @@ class MainEntity(
 //          println(mirrorRef)
           mirrorRef ! cmd
         }
-        active = !vertexProgram.voteToHalt(oldVal, newVal)
+        active = !vertexProgram.voteToHalt(stepNum, oldVal, newVal)
         localScatter(stepNum, oldVal, Some(newVal), sharding)
         pcRef ! PartitionCoordinator.DONE(stepNum) // TODO change to new PC command
       }

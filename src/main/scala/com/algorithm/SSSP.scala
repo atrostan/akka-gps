@@ -28,7 +28,7 @@ object SSSP extends VertexProgram[Int, Int, Int, Int] {
     }
   }
 
-  override def scatter(thisVertex: VertexInfo, oldVal: Int, newVal: Int): Option[Int] = {
+  override def scatter(superStepNumber: Int, thisVertex: VertexInfo, oldVal: Int, newVal: Int): Option[Int] = {
     if (newVal < oldVal) {
       Some(newVal)
     } else {
@@ -37,7 +37,7 @@ object SSSP extends VertexProgram[Int, Int, Int, Int] {
     }
   }
 
-  override def voteToHalt(oldVal: Int, newVal: Int): Boolean = true
+  override def voteToHalt(superStepNumber: Int, oldVal: Int, newVal: Int): Boolean = true
 
   override val defaultActivationStatus: Boolean = true
 

@@ -118,7 +118,7 @@ trait VertexEntity {
       newValue: Option[VertexValT],
       shardingRef: ClusterSharding
   ): Unit = {
-    val msgOption: Option[MessageT] = newValue.flatMap(vertexProgram.scatter(thisVertexInfo, oldValue, _))
+    val msgOption: Option[MessageT] = newValue.flatMap(vertexProgram.scatter(stepNum, thisVertexInfo, oldValue, _))
 
     for (neighbor <- neighbors) {
       // TODO 0 edgeVal for now, we need to implement these. Depends on neighbor!

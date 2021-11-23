@@ -41,6 +41,7 @@ trait LocalMaximalColouringAbstractMode extends VertexProgram[Int, Int, Set[Int]
   }
 
   override def scatter(
+      superStepNumber: Int, 
       thisVertex: VertexInfo,
       oldVal: Option[Colour],
       newVal: Option[Colour]
@@ -51,7 +52,7 @@ trait LocalMaximalColouringAbstractMode extends VertexProgram[Int, Int, Set[Int]
     }
   }
 
-  override def voteToHalt(oldVal: Option[Colour], newVal: Option[Colour]): Boolean = {
+  override def voteToHalt(superStepNumber: Int, oldVal: Option[Colour], newVal: Option[Colour]): Boolean = {
     newVal match {
       case None         => false
       case Some(colour) => true
