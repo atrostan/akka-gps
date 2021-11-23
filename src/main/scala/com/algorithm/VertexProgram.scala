@@ -7,8 +7,11 @@ object VertexProgram {
   case object Bidirectional extends Mode // Send messages to both out-neighbours and in-neighbours
 }
 
+
 // Stateless
-trait VertexProgram[VertexIdT, EdgeValT, MessageT, AccumulatorT, VertexValT] {
+trait VertexProgram[EdgeValT, MessageT, AccumulatorT, VertexValT] {
+
+  type VertexIdT = Int
 
   val mode: VertexProgram.Mode
 
@@ -18,12 +21,12 @@ trait VertexProgram[VertexIdT, EdgeValT, MessageT, AccumulatorT, VertexValT] {
 
   def apply(
       superStepNumber: Int,
-      thisVertexId: VertexIdT,
+      thisVertex: VertexInfo,
       oldVal: VertexValT,
       total: Option[AccumulatorT]
   ): VertexValT
 
-  def scatter(thisVertexId: VertexIdT, oldVal: VertexValT, newVal: VertexValT): Option[MessageT]
+  def scatter(thisVertex: VertexInfo, oldVal: VertexValT, newVal: VertexValT): Option[MessageT]
 
   def voteToHalt(oldVal: VertexValT, newVal: VertexValT): Boolean
 
@@ -31,3 +34,8 @@ trait VertexProgram[VertexIdT, EdgeValT, MessageT, AccumulatorT, VertexValT] {
 
   val defaultActivationStatus: Boolean
 }
+
+case class VertexInfo(
+  id: Int,
+  degree: Int
+)

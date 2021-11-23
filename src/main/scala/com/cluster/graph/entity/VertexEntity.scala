@@ -10,6 +10,7 @@ import com.CborSerializable
 import com.algorithm.LocalMaximaColouring
 import com.algorithm.Colour
 import com.cluster.graph.PartitionCoordinator
+import com.algorithm.VertexInfo
 
 object VertexEntity {
   // Hard coded for now
@@ -104,6 +105,8 @@ trait VertexEntity {
   val neighbourCounter: mutable.Map[SuperStep, Int] = new mutable.HashMap().withDefaultValue(0)
   var value: Int
 
+  var thisVertexInfo: VertexInfo = null
+
   def ctxLog(event: String): Unit
 
   // Check if ready to perform role in the apply phase, then begin if ready
@@ -115,7 +118,7 @@ trait VertexEntity {
       newValue: Option[VertexValT],
       shardingRef: ClusterSharding
   ): Unit = {
-    val msgOption: Option[MessageT] = newValue.flatMap(vertexProgram.scatter(vertexId, oldValue, _))
+    val msgOption: Option[MessageT] = newValue.flatMap(vertexProgram.scatter(thisVertexInfo, oldValue, _))
 
     for (neighbor <- neighbors) {
       // TODO 0 edgeVal for now, we need to implement these. Depends on neighbor!

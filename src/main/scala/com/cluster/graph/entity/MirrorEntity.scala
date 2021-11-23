@@ -8,6 +8,7 @@ import com.CborSerializable
 import scala.concurrent.duration._
 
 import VertexEntity._
+import com.algorithm.VertexInfo
 
 class MirrorEntity(
     ctx: ActorContext[VertexEntity.Command],
@@ -42,6 +43,7 @@ class MirrorEntity(
         neighbors = neighs
         main = m
         partitionInDegree = inDeg
+        thisVertexInfo = VertexInfo(vertexId, neighbors.size)
         val logStr = s"Received ask to initialize Mirror ${vertexId}_${partitionId}"
         ctxLog(logStr)
         replyTo ! VertexEntity.InitializeResponse(s"Initialized Mirror ${vertexId}_${partitionId}")
