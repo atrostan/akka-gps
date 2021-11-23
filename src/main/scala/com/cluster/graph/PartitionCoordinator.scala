@@ -13,6 +13,7 @@ import com.cluster.graph.entity.{EntityId, MainEntity, VertexEntity}
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, Future}
+import com.algorithm.VertexProgram
 
 /** PartitionCoordinator Actor Exists on each partition of the graph, is aware of all the main
   * vertices on its partition When a main vertex completes its computation for the current
@@ -51,6 +52,8 @@ class PartitionCoordinator(
   var doneCounter = collection.mutable.Map[Int, Int]().withDefaultValue(0)
   // counts the number of vertices in this partition that have voted to terminate their computation
   var voteCounter = collection.mutable.Map[Int, Int]().withDefaultValue(0)
+
+  val finalValues = collection.mutable.Map[Int, VertexEntity.VertexValT]()
 
   def locallyDone(stepNum: Int): Boolean = {
     doneCounter(stepNum) + voteCounter(stepNum) == nMains
@@ -134,6 +137,23 @@ class PartitionCoordinator(
       case AdaptedResponse(message) =>
         ctx.log.info("Got response from hal: {}", message)
         Behaviors.same
+        
+      case FinalValue(vtx, value) => {
+        println(s"Received value: ${vtx} -> ${value}")
+        finalValues += (vtx -> value)
+        if(finalValues.size == nMains) {
+          gcRef ! GlobalCoordinator.FinalValues(finalValues.toMap)
+        }
+        Behaviors.same
+      }
+
+      case GetFinalValues => {
+        for (m <- mains) {
+          val eRef = sharding.entityRefFor(VertexEntity.TypeKey, m.toString)
+          eRef ! VertexEntity.GetFinalValue
+        }
+        Behaviors.same
+      }
     }
   }
 }
@@ -179,6 +199,8 @@ object PartitionCoordinator {
   final case class DONE(stepNum: Int) extends Command
   final case class TerminationVote(stepNum: Int) extends Command
   final case class BEGIN(stepNum: Int) extends Command
+  final case object GetFinalValues extends Command
+  final case class FinalValue(vtx: Int, value: VertexEntity.VertexValT) extends Command
 
   private case class AdaptedResponse(message: String) extends Command
   case object Idle extends Command
