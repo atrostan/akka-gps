@@ -105,6 +105,11 @@ class MainEntity(
         Behaviors.same
       }
 
+      case GetFinalValue => {
+        pcRef ! PartitionCoordinator.FinalValue(vertexId, currentValue)
+        Behaviors.same
+      }
+
       case VertexEntity.Idle =>
         entityContext.shard ! ClusterSharding.Passivate(ctx.self)
         Behaviors.same

@@ -7,8 +7,7 @@ import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
 import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityContext, EntityTypeKey}
 import com.CborSerializable
-import com.algorithm.LocalMaximaColouring
-import com.algorithm.Colour
+import com.algorithm._
 import com.cluster.graph.PartitionCoordinator
 
 object VertexEntity {
@@ -20,6 +19,8 @@ object VertexEntity {
   type VertexValT = Option[Colour]
   type SuperStep = Int
 
+  // Commands
+
   sealed trait Command extends CborSerializable
   trait Response extends CborSerializable
 
@@ -28,11 +29,14 @@ object VertexEntity {
 
   val TypeKey = EntityTypeKey[VertexEntity.Command]("VertexEntity")
 
-  // GAS General Commands
+  // GAS Commands
   case class Begin(stepNum: Int) extends Command
   case object End extends Command
   final case class NeighbourMessage(stepNum: Int, edgeVal: Option[EdgeValT], msg: Option[MessageT])
       extends Command
+  final case class MirrorTotal(stepNum: Int, total: Option[AccumulatorT]) extends Command
+  final case class ApplyResult(stepNum: Int, oldVal: VertexValT, newVal: Option[VertexValT]) extends Command
+  final case object GetFinalValue extends Command
 
   // PartitionCoordinator Commands
   final case class NotifyLocation(replyTo: ActorRef[LocationResponse]) extends Command
@@ -64,9 +68,6 @@ object VertexEntity {
   // Init Sync Response
   final case class InitializeResponse(message: String) extends Response
 
-  // GAS
-  final case class MirrorTotal(stepNum: Int, total: Option[AccumulatorT]) extends Command
-  final case class ApplyResult(stepNum: Int, oldVal: VertexValT, newVal: Option[VertexValT]) extends Command
 
   // Counter actions TESTING ONLY
   case object Increment extends Command

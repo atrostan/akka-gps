@@ -12,6 +12,11 @@ import com.Typedefs.{GCRef, PCRef}
 
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, Future}
+import com.cluster.graph.entity.VertexEntity
+import com.algorithm.VertexProgram
+import akka.stream.javadsl.Partition
+import com.algorithm.Colour
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 
 /** The central coordinator monitors the state of every vertex in the graph (via the
   * partitionCoordinator), to ensure all vertices are performing the computation for the same
@@ -39,6 +44,9 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
   var voteCounter = collection.mutable.Map[Int, Int]().withDefaultValue(0)
   var numPartitions = -1
   var numNodes = -1
+
+  val finalValues = collection.mutable.Map[Int, VertexEntity.VertexValT]()
+  var nPCFinalValues = 0
 
   def globallyDone(stepNum: Int): Boolean = {
     doneCounter(stepNum) + voteCounter(stepNum) == numPartitions
@@ -73,7 +81,8 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
         println(s"gc : step ${stepNum}: done counter${doneCounter(stepNum)}")
 
         if (globallyDone(stepNum)) {
-          println("globally done")
+          println("globally done =========================================================================================================================================")
+          println(s"beginning superstep ${stepNum + 1}")
           broadcastBEGINToPCs(stepNum + 1)
         }
         Behaviors.same
@@ -84,6 +93,10 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
         if (globallyTerminated(stepNum)) {
           println("TERMINATION")
           //TODO TERMINATE..?
+          nPCFinalValues = 0
+          for((pid, pcRef) <- pcRefs) {
+            pcRef ! PartitionCoordinator.GetFinalValues
+          }
         } else if (globallyDone(stepNum)) {
           broadcastBEGINToPCs(stepNum + 1)
         }
@@ -111,6 +124,30 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
         replyTo ! GetPCRefsResponse(pcRefs)
         Behaviors.same
 
+      case FinalValues(valueMap) => {
+        finalValues ++= valueMap
+
+        nPCFinalValues += 1
+        
+        // if(nPCFinalValues == numPartitions) {
+          // println("Final Values:")
+
+          // for((vtx, value) <- finalValues) {
+          //   println(s"${vtx} -> ${value}")
+          // }
+        // }
+        
+        Behaviors.same
+      }
+
+      case GetFinalValues(replyTo) => {
+        if(nPCFinalValues == numPartitions) {
+          replyTo ! FinalValuesResponseComplete(finalValues.toMap)
+        } else {
+          replyTo ! FinalValuesResponseNotFinished
+        }
+        Behaviors.same
+      }
     }
   }
 }
@@ -135,6 +172,11 @@ object GlobalCoordinator {
   final case class DONE(stepNum: Int) extends Command
   final case class TerminationVote(stepNum: Int) extends Command
   final case class BEGIN() extends Command
+  /**
+   * JsonDeserialize tag needed. See open issue: https://github.com/akka/akka/issues/28566
+   */
+  final case class FinalValues(@JsonDeserialize(keyAs = classOf[Int]) valueMap: collection.immutable.Map[Int, VertexEntity.VertexValT]) extends Command
+  final case class GetFinalValues(replyTo: ActorRef[FinalValuesResponse]) extends Command
 
   // Init Sync Commands
   final case class GetPCRefs(replyTo: ActorRef[GetPCRefsResponse]) extends Command
@@ -150,4 +192,8 @@ object GlobalCoordinator {
   final case class GetPCRefsResponse(pcRefs: collection.mutable.Map[Int, PCRef]) extends Response
   final case class BroadcastRefResponse(message: String) extends Response
   final case class InitializeResponse(message: String) extends Response
+
+  sealed trait FinalValuesResponse extends Response
+  final case class FinalValuesResponseComplete(@JsonDeserialize(keyAs = classOf[Int]) valueMap: collection.immutable.Map[Int, VertexEntity.VertexValT]) extends FinalValuesResponse
+  final case object FinalValuesResponseNotFinished extends FinalValuesResponse
 }
