@@ -10,14 +10,17 @@ lazy val sparkVersion = "3.1.2"
 
 ThisBuild / assemblyMergeStrategy := {
 //  case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
-  case PathList("javax", "servlet", xs@_*) => MergeStrategy.first
-  case PathList(ps@_*) if ps.last endsWith ".html" => MergeStrategy.first
+  case PathList("javax", "servlet", xs @ _*)                                 => MergeStrategy.first
+  case PathList(ps @ _*) if ps.last endsWith ".html"                         => MergeStrategy.first
   case PathList("org", "apache", "spark", "unused", "UnusedStubClass.class") => MergeStrategy.first
-  case "application.conf" => MergeStrategy.concat
+  case "application.conf"                                                    => MergeStrategy.concat
   case "unwanted.txt" => MergeStrategy.discard
-  case PathList("org", "apache", "hadoop", "yarn", "factories", "package-info.class") => MergeStrategy.discard
-  case PathList("org", "apache", "hadoop", "yarn", "provider", "package-info.class") => MergeStrategy.discard
-  case PathList("org", "apache", "hadoop", "util", "provider", "package-info.class") => MergeStrategy.discard
+  case PathList("org", "apache", "hadoop", "yarn", "factories", "package-info.class") =>
+    MergeStrategy.discard
+  case PathList("org", "apache", "hadoop", "yarn", "provider", "package-info.class") =>
+    MergeStrategy.discard
+  case PathList("org", "apache", "hadoop", "util", "provider", "package-info.class") =>
+    MergeStrategy.discard
   case PathList("org", "apache", "spark", "unused", "UnusedStubClass.class") => MergeStrategy.first
   case PathList("org", "aopalliance", "intercept", "MethodInvocation.class") => MergeStrategy.first
 
@@ -32,12 +35,25 @@ lazy val `akka-gps` = project
   .settings(
     //    organization := "com.lightbend.akka.samples",
     scalaVersion := "2.12.15",
-    Compile / scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-Xlog-reflective-calls", "-Xlint", "-target:jvm-1.8"),
+    Compile / scalacOptions ++= Seq(
+      "-deprecation",
+      "-feature",
+      "-unchecked",
+      "-Xlog-reflective-calls",
+      "-Xlint",
+      "-target:jvm-1.8"
+    ),
     Compile / javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation"),
     // Compile / PB.targets := Seq(
     //   scalapb.gen() -> (Compile / sourceManaged).value / "scalapb"
     // ),
-    run / javaOptions ++= Seq("-Xms128m", "-Xmx8G", "-XX:+UseG1GC", "-Djava.library.path=./target/native", "-Dlog4j.configuration=src/main/resources/log4j.properties"),
+    run / javaOptions ++= Seq(
+      "-Xms128m",
+      "-Xmx8G",
+      "-XX:+UseG1GC",
+      "-Djava.library.path=./target/native",
+      "-Dlog4j.configuration=src/main/resources/log4j.properties"
+    ),
     libraryDependencies ++= Seq(
       "com.typesafe.akka" %% "akka-actor-typed" % akkaVersion,
       "com.typesafe.akka" %% "akka-cluster-typed" % akkaVersion,
@@ -50,15 +66,15 @@ lazy val `akka-gps` = project
       "com.typesafe.akka" %% "akka-persistence-testkit" % akkaVersion % Test,
       "org.apache.spark" %% "spark-core" % sparkVersion,
       "org.apache.spark" %% "spark-streaming" % sparkVersion,
+      "org.apache.spark" %% "spark-sql" % sparkVersion,
+      "org.apache.spark" %% "spark-avro" % sparkVersion,
+      "org.yaml" % "snakeyaml" % "1.29",
       "org.scala-graph" %% "graph-core" % "1.12.5"
     ),
     run / fork := false,
     Global / cancelable := false,
     // disable parallel tests
     Test / parallelExecution := false,
-    licenses := Seq(("CC0", url("http://creativecommons.org/publicdomain/zero/1.0"))),
+    licenses := Seq(("CC0", url("http://creativecommons.org/publicdomain/zero/1.0")))
   )
   .configs(MultiJvm)
-
-
-

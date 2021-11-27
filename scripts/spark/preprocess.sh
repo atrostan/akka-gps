@@ -49,11 +49,14 @@ akka_gps_home="/home/atrostan/Workspace/repos/akka-gps"
 
 partitionDriverJarPath="${akka_gps_home}/out/artifacts/akka_gps_partitioner_jar/akka-gps.jar"
 compressorDriverJarPath="${akka_gps_home}/out/artifacts/akka_gps_compressor_jar/akka-gps.jar"
-graphName="email-Eu-core"
+
+# directory that stores the graph
+
+graphName="8rmat"
 graphDir="${akka_gps_home}/src/main/resources/graphs/${graphName}"
 
 # original, uncompressed edgelist
-origGraphPath="\"${graphDir}/origWeighted.net\"" 
+origGraphPath="\"${graphDir}/orig.net\"" 
 
 # directory that will store the compressed edgelist
 compressedDirName="compressed"
@@ -61,10 +64,13 @@ outputFilename="\"${graphDir}/${compressedDirName}\""
 compressedGraphPath="\"${graphDir}/${compressedDirName}/part-00000\""
 
 sep="\" \""
-isWeighted="\"true\""
+
+# whether the original edge list stores weights or not (true or false)
+isWeighted="\"false\""
+
 graphYaml="${graphDir}/stats.yml"
 outputPartitionsPath="\"${graphDir}/partitions\""
-threshold=100
+threshold=7
 numPartitions=4
 
 partitioners=(

@@ -1,8 +1,12 @@
 package com.preprocessing.edgeList
 
-import com.preprocessing.partitioning.Util.readEdgeList
+import com.Typedefs.{UnweightedEdge, WeightedEdge}
+import com.preprocessing.partitioning.Util.{readEdgeList, saveUnweightedRDDAsDF, saveWeightedRDDAsDF}
 import org.apache.spark.{SparkConf, SparkContext}
-import java.io.{PrintWriter, File}
+
+import java.io.{File, PrintWriter}
+import org.apache.spark.sql.{Row, SQLContext, SparkSession}
+import org.apache.spark.sql.types.{LongType, IntegerType, StringType, StructField, StructType}
 
 object Driver {
   """
@@ -13,7 +17,7 @@ runMain com.preprocessing.edgeList.Compressor
 --outputFilename: output path
 --sep:            separator used in input edge list (e.g. " ", ",",  "\t")
 
-runMain com.preprocessing.edgeList.Driver --inputFilename "src/main/resources/graphs/email-Eu-core/origWeighted.net" --outputFilename "src/main/resources/graphs/email-Eu-core/compressed"  --sep " " --isWeighted "true"
+runMain com.preprocessing.edgeList.Driver --inputFilename "src/main/resources/graphs/email-Eu-core/orig.net" --outputFilename "src/main/resources/graphs/email-Eu-core/compressed"  --sep " " --isWeighted "false"
 
 Sort an input edge list by ascending source id. For each source id, the destination ids are also sorted in
 ascending order.
@@ -73,6 +77,8 @@ The edgeList.Compressor will produce
       .setMaster("local[*]")
     val sc = new SparkContext(conf)
 
+    val spark: SparkSession = SparkSession.builder.master("local[*]").getOrCreate
+
     val hadoopConfig = sc.hadoopConfiguration
     hadoopConfig.set("fs.hdfs.impl", classOf[org.apache.hadoop.hdfs.DistributedFileSystem].getName)
     hadoopConfig.set("fs.file.impl", classOf[org.apache.hadoop.fs.LocalFileSystem].getName)
@@ -90,8 +96,6 @@ The edgeList.Compressor will produce
       case Array("--isWeighted", argWt: String)          => isWeighted = argWt.toBoolean
     }
 
-
-
     println("reading edge list...")
     val edgeList = readEdgeList(sc, infile, sep, isWeighted)
     println("compressing...")
@@ -99,14 +103,18 @@ The edgeList.Compressor will produce
 
     val compressed = c.compress()
     exportYML(infile, c)
+
     try {
       compressed match {
         case Left(compressed) => // RDD[WeightedEdge]
           compressed
             .sortBy(r => (r._2._1, r._2._2, r._2._3))
             .map(r => s"${r._2._1} ${r._2._2} ${r._2._3}")
-            .coalesce(1, false) // TODO; partition into multiple files/numPartitions HERE
+            .coalesce(1, false)
             .saveAsTextFile(outfile)
+          val rdd = compressed
+            .sortBy(r => (r._2._1, r._2._2, r._2._3))
+          saveWeightedRDDAsDF(rdd, spark, outfile)
 
         case Right(compressed) => // RDD[UnweightedEdge]
           compressed
@@ -114,6 +122,10 @@ The edgeList.Compressor will produce
             .map(r => s"${r._2._1} ${r._2._2}")
             .coalesce(1, false)
             .saveAsTextFile(outfile)
+          val rdd = compressed
+            .sortBy(r => (r._2._1, r._2._2))
+          saveUnweightedRDDAsDF(rdd, spark, outfile)
+
       }
     } catch {
       case e: org.apache.hadoop.mapred.FileAlreadyExistsException =>

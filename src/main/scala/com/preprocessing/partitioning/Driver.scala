@@ -2,10 +2,11 @@ package com.preprocessing.partitioning
 
 import com.Typedefs.{EitherEdgeRDD, UnweightedEdge, WeightedEdge}
 import com.preprocessing.partitioning.PartitioningType.{Hybrid, OneDim, TwoDim}
-import com.preprocessing.partitioning.Util.{createPartitionDir, edgeListMatchAndPersist, hybridPartitioningPreprocess, parseArgs, persist, readEdgeList}
+import com.preprocessing.partitioning.Util.{createPartitionDir, edgeListMatchAndPersist, hybridPartitioningPreprocess, parseArgs, persist, readEdgeList, readEdgeListDF}
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.{Partitioner, SparkConf, SparkContext}
 
-// runMain com.preprocessing.partitioning.Driver --nNodes 986 --nEdges 24929 --inputFilename "src/main/resources/graphs/email-Eu-core/compressed/part-00000" --outputDirectoryName "src/main/resources/graphs/email-Eu-core/partitions" --sep " " --partitioner 3 --threshold 100 --numPartitions 4 --partitionBySource "false" --isWeighted "true"
+// runMain com.preprocessing.partitioning.Driver --nNodes 986 --nEdges 24929 --inputFilename "src/main/resources/graphs/email-Eu-core/compressed.parquet" --outputDirectoryName "src/main/resources/graphs/email-Eu-core/partitions" --sep " " --partitioner 3 --threshold 100 --numPartitions 4 --partitionBySource "false" --isWeighted "false"
 
 object Driver {
 
@@ -18,6 +19,9 @@ object Driver {
       .setMaster("local[*]")
 
     val sc = new SparkContext(conf)
+
+    val spark: SparkSession = SparkSession.builder.master("local[*]").getOrCreate
+
     val hadoopConfig = sc.hadoopConfiguration
     hadoopConfig.set("fs.hdfs.impl", classOf[org.apache.hadoop.hdfs.DistributedFileSystem].getName)
     hadoopConfig.set("fs.file.impl", classOf[org.apache.hadoop.fs.LocalFileSystem].getName)
@@ -44,7 +48,10 @@ object Driver {
       s"with degree threshold = $threshold qualifying a vertex as high degree."
     println(execStartString)
     println("reading edge list...")
-    val edgeList = readEdgeList(sc, infile, sep, isWeighted)
+//    val edgeList = readEdgeList(sc, infile, sep, isWeighted)
+    val edgeList = readEdgeListDF(spark, infile, isWeighted)
+//    if (isWeighted) { val el = readWeightedEdgeListDF(spark: SparkSession, infile) }
+//    else { val el = readWeightedEdgeListDF(spark: SparkSession, infile) }
 
     partitioningType match {
       case OneDim =>
@@ -75,6 +82,7 @@ object Driver {
               .map(t => t._1._1)
               .map(r => s"${r._1} ${r._2}")
             persist[String](el, partitionDir, 0)
+
           case Left(flaggedEdgeList) => // Weighted, flagged, indexed
             val el = flaggedEdgeList
               .partitionBy(partitioner)

@@ -38,6 +38,9 @@ class Compressor(edgeList: EitherEdgeRDD) {
    */
   def compressRdd(rdd: RDD[(Long, (Int, Int))]): RDD[(Long, (Int, Int))] = {
     // get source ids
+
+    rdd.cache()
+
     val sources: RDD[Int] = rdd
       .map(row => row._2._1)
       .distinct()
@@ -59,13 +62,14 @@ class Compressor(edgeList: EitherEdgeRDD) {
     val vertexMap = sourceMap.union(unseenDestinations)
     nNodes = vertexMap.count()
     println(s"Number of nodes in compressed representation: ${nNodes}")
-
+    vertexMap.cache()
     // debug
 //    persist(vertexMap, "src/main/resources/graphs/email-Eu-core/map", 1)
 
     val sourcesFirst: RDD[(Int, (Int, Long))] = rdd
       .map(row => (row._2._1, (row._2._2, row._1)))
 
+    sourcesFirst.cache()
     // remap the edges of the graph using the vertexmap
     val res = sourcesFirst
       .join(vertexMap)

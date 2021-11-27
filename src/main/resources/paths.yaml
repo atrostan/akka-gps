@@ -1,0 +1,5 @@
+workers:
+  - src/main/resources/graphs/8rmat/partitions/hybrid/bySrc/p0
+  - src/main/resources/graphs/8rmat/partitions/hybrid/bySrc/p1
+  - src/main/resources/graphs/8rmat/partitions/hybrid/bySrc/p2
+  - src/main/resources/graphs/8rmat/partitions/hybrid/bySrc/p3

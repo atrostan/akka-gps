@@ -44,4 +44,19 @@ object Typedefs {
     def empty: MemberSet = collection.mutable.Set.empty
     def apply(ms: (Member)*): MemberSet = collection.mutable.Set(ms: _*)
   }
+
+  // an rdd row that represents all the information we need to instantiate a main vertex in akka cluster sharding
+  type MainRow = (
+      (Int, Int), // (vid, pid)
+      Set[_ <: Int], // partitions that contain mirrors
+      List[(Int, Int)], // list of outgoing edges on partition pid
+      Int // indegree in partition pid
+  )
+
+  type MirrorRow = (
+      (Int, Int), // (vid, pid)
+      Int, // partition that contains main
+      List[(Int, Int)], // list of outgoing edges on partition pid
+      Int // indegree in partition pid
+  )
 }
