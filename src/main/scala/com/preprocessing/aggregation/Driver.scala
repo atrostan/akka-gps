@@ -39,21 +39,18 @@ object Driver {
     val appName: String = "preprocessing.aggregation.Driver"
     val conf = new SparkConf()
       .setAppName(appName)
-      .setMaster("local[*]")
     val sc = new SparkContext(conf)
-
-    val spark: SparkSession = SparkSession.builder.master("local[*]").getOrCreate
+    sc.setLogLevel("ERROR")
+    val spark: SparkSession = SparkSession.builder.getOrCreate
 
     val hadoopConfig = sc.hadoopConfiguration
     hadoopConfig.set("fs.hdfs.impl", classOf[org.apache.hadoop.hdfs.DistributedFileSystem].getName)
     hadoopConfig.set("fs.file.impl", classOf[org.apache.hadoop.fs.LocalFileSystem].getName)
 
-
     val (partitionFolder, numPartitions, sep, workerPaths) = parseArgs(args)
 
     // a map between partition ids to location on hdfs of mains, mirrors for that partition
-//    val partitionMap = readWorkerPathsFromYaml(workerPaths: String)
-    val partitionMap = Map(1 -> "str")
+    val partitionMap = readWorkerPathsFromYaml(workerPaths: String)
     // create mains, mirrors partition dirs if they don't exist
     for ((_, path) <- partitionMap) { createDirectories(Paths.get(path)) }
 
@@ -69,15 +66,18 @@ object Driver {
     partitionMirrorsDF(mirrors, spark, partitionMap)
 
     // read for debug
-//    for ((pid, path) <- partitionMap) {
-//      println(s"Reading partition ${pid} in ${path}")
-//      val mains = readMainPartitionDF(path+"/mains", spark)
-//      val mirrors = readMirrorPartitionDF(path+"/mirrors", spark)
-//      println("mains")
-//      mains.foreach(m => println(s"\t$m"))
-//      println("mirrors")
-//      mirrors.foreach(m => println(s"\t$m"))
-//    }
+    println("#"*68)
+    println("DEBUG OUTPUT")
+    println("#"*68)
+    for ((pid, path) <- partitionMap) {
+      println(s"Reading partition ${pid} in ${path}")
+      val mains = readMainPartitionDF(path+"/mains", spark)
+      val mirrors = readMirrorPartitionDF(path+"/mirrors", spark)
+      println("mains")
+      mains.foreach(m => println(s"\t$m"))
+      println("mirrors")
+      mirrors.foreach(m => println(s"\t$m"))
+    }
 
     sc.stop()
   }

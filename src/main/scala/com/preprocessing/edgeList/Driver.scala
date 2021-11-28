@@ -74,10 +74,10 @@ The edgeList.Compressor will produce
 
     val conf = new SparkConf()
       .setAppName(appName)
-      .setMaster("local[*]")
     val sc = new SparkContext(conf)
+    sc.setLogLevel("ERROR")
+    val spark: SparkSession = SparkSession.builder.getOrCreate
 
-    val spark: SparkSession = SparkSession.builder.master("local[*]").getOrCreate
 
     val hadoopConfig = sc.hadoopConfiguration
     hadoopConfig.set("fs.hdfs.impl", classOf[org.apache.hadoop.hdfs.DistributedFileSystem].getName)

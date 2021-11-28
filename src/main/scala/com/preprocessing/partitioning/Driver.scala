@@ -16,11 +16,10 @@ object Driver {
 
     val conf = new SparkConf()
       .setAppName(appName)
-      .setMaster("local[*]")
 
     val sc = new SparkContext(conf)
-
-    val spark: SparkSession = SparkSession.builder.master("local[*]").getOrCreate
+    sc.setLogLevel("ERROR")
+    val spark: SparkSession = SparkSession.builder.getOrCreate
 
     val hadoopConfig = sc.hadoopConfiguration
     hadoopConfig.set("fs.hdfs.impl", classOf[org.apache.hadoop.hdfs.DistributedFileSystem].getName)

@@ -8,26 +8,24 @@ version := "1.0"
 lazy val akkaVersion = "2.6.16"
 lazy val sparkVersion = "3.1.2"
 
+val meta = """META.INF(.)*""".r
 ThisBuild / assemblyMergeStrategy := {
-//  case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
-  case PathList("javax", "servlet", xs @ _*)                                 => MergeStrategy.first
-  case PathList(ps @ _*) if ps.last endsWith ".html"                         => MergeStrategy.first
-  case PathList("org", "apache", "spark", "unused", "UnusedStubClass.class") => MergeStrategy.first
-  case "application.conf"                                                    => MergeStrategy.concat
-  case "unwanted.txt" => MergeStrategy.discard
-  case PathList("org", "apache", "hadoop", "yarn", "factories", "package-info.class") =>
-    MergeStrategy.discard
-  case PathList("org", "apache", "hadoop", "yarn", "provider", "package-info.class") =>
-    MergeStrategy.discard
-  case PathList("org", "apache", "hadoop", "util", "provider", "package-info.class") =>
-    MergeStrategy.discard
-  case PathList("org", "apache", "spark", "unused", "UnusedStubClass.class") => MergeStrategy.first
-  case PathList("org", "aopalliance", "intercept", "MethodInvocation.class") => MergeStrategy.first
-
-  case x =>
-    val oldStrategy = (ThisBuild / assemblyMergeStrategy).value
-    oldStrategy(x)
+  case PathList("javax", "servlet", xs @ _*) => MergeStrategy.first
+  case PathList(ps @ _*) if ps.last endsWith ".html" => MergeStrategy.first
+  case n if n.contains("services") => MergeStrategy.concat
+  case n if n.startsWith("reference.conf") => MergeStrategy.concat
+  case n if n.endsWith(".conf") => MergeStrategy.concat
+  case meta(_) => MergeStrategy.discard
+  case x => MergeStrategy.first
 }
+
+//ThisBuild / assemblyMergeStrategy := {
+//  case PathList("META-INF", "services", "org.apache.hadoop.fs.FileSystem") =>
+//    MergeStrategy.filterDistinctLines
+////  case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
+//  case PathList("META-INF", ps @ _*) => MergeStrategy.discard
+//  case x => MergeStrategy.first
+//}
 
 lazy val `akka-gps` = project
   .in(file("."))
@@ -68,13 +66,16 @@ lazy val `akka-gps` = project
       "org.apache.spark" %% "spark-streaming" % sparkVersion,
       "org.apache.spark" %% "spark-sql" % sparkVersion,
       "org.apache.spark" %% "spark-avro" % sparkVersion,
-//      "org.yaml" % "snakeyaml" % "1.29",
+      "org.yaml" % "snakeyaml" % "1.29",
+      "org.apache.hadoop" % "hadoop-hdfs" % "3.3.1",
       "org.scala-graph" %% "graph-core" % "1.12.5"
     ),
     run / fork := false,
     Global / cancelable := false,
     // disable parallel tests
     Test / parallelExecution := false,
-    licenses := Seq(("CC0", url("http://creativecommons.org/publicdomain/zero/1.0")))
+    licenses := Seq(("CC0", url("http://creativecommons.org/publicdomain/zero/1.0"))),
+    assembly / assemblyJarName := "akka-gps.jar",
+//    assembly / mainClass := Some("com.preprocessing.edgeList.Driver"),
   )
   .configs(MultiJvm)
