@@ -298,6 +298,7 @@ object Util {
       df
         .coalesce(1)
         .write
+        .mode("overwrite")
         .format(format)
         .save(formattedPath)
     }
@@ -650,23 +651,23 @@ object Util {
     (mains, mirrorsWithMainPids)
   }
 
-  def readWorkerPathsFromYaml(workerPaths: String): Map[Int, String] = {
-    val config = new FileInputStream(new File(workerPaths))
-    val yaml = new Yaml()
-    val partitions = mapAsScalaMap(
-      yaml
-        .load(config)
-        .asInstanceOf[java.util.Map[String, Any]]
-    )("workers")
-      .asInstanceOf[java.util.ArrayList[String]]
-    val itr = partitions.listIterator()
-    var pid = 0
-    val pMap = collection.mutable.Map[Int, String]()
-    while(itr.hasNext) {
-      pMap(pid) = itr.next()
-      pid+=1
-    }
-    pMap.toMap
-  }
+//  def readWorkerPathsFromYaml(workerPaths: String): Map[Int, String] = {
+//    val config = new FileInputStream(new File(workerPaths))
+//    val yaml = new Yaml()
+//    val partitions = mapAsScalaMap(
+//      yaml
+//        .load(config)
+//        .asInstanceOf[java.util.Map[String, Any]]
+//    )("workers")
+//      .asInstanceOf[java.util.ArrayList[String]]
+//    val itr = partitions.listIterator()
+//    var pid = 0
+//    val pMap = collection.mutable.Map[Int, String]()
+//    while(itr.hasNext) {
+//      pMap(pid) = itr.next()
+//      pid+=1
+//    }
+//    pMap.toMap
+//  }
 
 }

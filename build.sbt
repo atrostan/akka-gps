@@ -68,7 +68,7 @@ lazy val `akka-gps` = project
       "org.apache.spark" %% "spark-streaming" % sparkVersion,
       "org.apache.spark" %% "spark-sql" % sparkVersion,
       "org.apache.spark" %% "spark-avro" % sparkVersion,
-      "org.yaml" % "snakeyaml" % "1.29",
+//      "org.yaml" % "snakeyaml" % "1.29",
       "org.scala-graph" %% "graph-core" % "1.12.5"
     ),
     run / fork := false,

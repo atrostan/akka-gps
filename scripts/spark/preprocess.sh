@@ -49,7 +49,7 @@ akka_gps_home="/home/atrostan/Workspace/repos/akka-gps"
 
 partitionDriverJarPath="${akka_gps_home}/out/artifacts/akka_gps_partitioner_jar/akka-gps.jar"
 compressorDriverJarPath="${akka_gps_home}/out/artifacts/akka_gps_compressor_jar/akka-gps.jar"
-
+aggregatorDriverJarPath="${akka_gps_home}/out/artifacts/akka_gps_aggregator_jar/akka-gps.jar"
 # directory that stores the graph
 
 graphName="8rmat"
@@ -74,20 +74,21 @@ threshold=7
 numPartitions=4
 
 partitioners=(
-  1 # 1d
-  2 # 2d
+#  1 # 1d
+#  2 # 2d
   3 # Hybrid
 )
 
 partitionBys=(
   "\"true\"" # partition by source
-  "\"false\"" # partition by destination
+#  "\"false\"" # partition by destination
 )
 
 # compress the graph
 compressJavaJarStr="java -jar ${compressorDriverJarPath} --inputFilename ${origGraphPath} --outputFilename ${outputFilename} --sep ${sep} --isWeighted ${isWeighted}"
 # echo ${compressJavaJarStr}
-
+echo "henlo"
+java -jar ${compressorDriverJarPath}
 if [ $compressParam -eq 1 ]
 then 
   eval ${compressJavaJarStr}

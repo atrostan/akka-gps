@@ -88,7 +88,6 @@ The edgeList.Compressor will produce
     var sep = ""
     var isWeighted: Boolean = false
 
-
     args.sliding(2, 2).toList.collect {
       case Array("--inputFilename", argInFile: String)   => infile = argInFile
       case Array("--outputFilename", argOutFile: String) => outfile = argOutFile
@@ -107,21 +106,21 @@ The edgeList.Compressor will produce
     try {
       compressed match {
         case Left(compressed) => // RDD[WeightedEdge]
-          compressed
-            .sortBy(r => (r._2._1, r._2._2, r._2._3))
-            .map(r => s"${r._2._1} ${r._2._2} ${r._2._3}")
-            .coalesce(1, false)
-            .saveAsTextFile(outfile)
+//          compressed
+//            .sortBy(r => (r._2._1, r._2._2, r._2._3))
+//            .map(r => s"${r._2._1} ${r._2._2} ${r._2._3}")
+//            .coalesce(1, false)
+//            .saveAsTextFile(outfile)
           val rdd = compressed
             .sortBy(r => (r._2._1, r._2._2, r._2._3))
           saveWeightedRDDAsDF(rdd, spark, outfile)
 
         case Right(compressed) => // RDD[UnweightedEdge]
-          compressed
-            .sortBy(r => (r._2._1, r._2._2))
-            .map(r => s"${r._2._1} ${r._2._2}")
-            .coalesce(1, false)
-            .saveAsTextFile(outfile)
+//          compressed
+//            .sortBy(r => (r._2._1, r._2._2))
+//            .map(r => s"${r._2._1} ${r._2._2}")
+//            .coalesce(1, false)
+//            .saveAsTextFile(outfile)
           val rdd = compressed
             .sortBy(r => (r._2._1, r._2._2))
           saveUnweightedRDDAsDF(rdd, spark, outfile)
