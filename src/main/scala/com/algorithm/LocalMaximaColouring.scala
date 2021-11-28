@@ -4,14 +4,14 @@ case class Colour(num: Int) {
   require(num >= 0)
 }
 
-trait LocalMaximalColouringAbstractMode extends VertexProgram[Int, Int, Int, Set[Int], Option[Colour]] {
+trait LocalMaximalColouringAbstractMode extends VertexProgram[Int, Int, Set[Int], Option[Colour]] {
   override def gather(edgeVal: Int, message: Int): Set[Int] = Set(message)
 
   override def sum(a: Set[Int], b: Set[Int]): Set[Int] = a.union(b)
 
   override def apply(
       superStepNumber: Int,
-      thisVertexId: Int,
+      thisVertex: VertexInfo,
       oldVal: Option[Colour],
       total: Option[Set[Int]]
   ): Option[Colour] = {
@@ -27,7 +27,7 @@ trait LocalMaximalColouringAbstractMode extends VertexProgram[Int, Int, Int, Set
               Some(Colour(superStepNumber - 1))
             }
             case Some(idSet) => {
-              if (idSet.max < thisVertexId) {
+              if (idSet.max < thisVertex.id) {
                 // Colour myself with superstep number
                 Some(Colour(superStepNumber - 1))
               } else {
@@ -41,17 +41,18 @@ trait LocalMaximalColouringAbstractMode extends VertexProgram[Int, Int, Int, Set
   }
 
   override def scatter(
-      thisVertexId: Int,
+      superStepNumber: Int, 
+      thisVertex: VertexInfo,
       oldVal: Option[Colour],
       newVal: Option[Colour]
   ): Option[Int] = {
     newVal match {
-      case None         => Some(thisVertexId)
+      case None         => Some(thisVertex.id)
       case Some(colour) => None
     }
   }
 
-  override def voteToHalt(oldVal: Option[Colour], newVal: Option[Colour]): Boolean = {
+  override def voteToHalt(superStepNumber: Int, oldVal: Option[Colour], newVal: Option[Colour]): Boolean = {
     newVal match {
       case None         => false
       case Some(colour) => true

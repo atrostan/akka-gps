@@ -7,9 +7,9 @@ import com.algorithm.VertexProgram.Inwards
 import com.algorithm.VertexProgram.Bidirectional
 
 object SequentialRun {
-  def apply[VertexIdT, MessageT, AccumulatorT, VertexValT](
-      vertexProgram: VertexProgram[VertexIdT, Int, MessageT, AccumulatorT, VertexValT],
-      graph: Graph[VertexIdT, WDiEdge]
+  def apply[MessageT, AccumulatorT, VertexValT](
+      vertexProgram: VertexProgram[Int, MessageT, AccumulatorT, VertexValT],
+      graph: Graph[Int, WDiEdge]
   ): Map[graph.NodeT, VertexValT] = {
 
     type Vertex = graph.NodeT
@@ -41,6 +41,8 @@ object SequentialRun {
         case Bidirectional => outEdges ++ inEdges
       }
     } 
+
+    val vertexInfoMap = vertices.map(v => (v, VertexInfo(v.value, relevantEdges(v).size))).toMap
 
     var progressFlag = true
 
@@ -75,18 +77,18 @@ object SequentialRun {
 
         // Apply
         val oldVal = states(vtx)
-        val newVal = vertexProgram.apply(superstep, vtx.value, oldVal, finalAccumulator)
+        val newVal = vertexProgram.apply(superstep, vertexInfoMap(vtx), oldVal, finalAccumulator)
         states = states.updated(vtx, newVal)
 
         // Scatter
         for {
           (msgDest, edge) <- relevantEdges(vtx)
-          msg <- vertexProgram.scatter(vtx, oldVal, newVal)
+          msg <- vertexProgram.scatter(superstep, vertexInfoMap(vtx), oldVal, newVal)
         } {
           sendMessage(msgDest, edge, msg)
         }
 
-        val activation = !vertexProgram.voteToHalt(oldVal, newVal)
+        val activation = !vertexProgram.voteToHalt(superstep, oldVal, newVal)
         activeMap = activeMap.updated(vtx, activation)
       }
 
