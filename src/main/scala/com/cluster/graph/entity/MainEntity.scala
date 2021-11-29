@@ -19,7 +19,7 @@ class MainEntity(
 ) extends AbstractBehavior[VertexEntity.Command](ctx)
     with VertexEntity {
 
-  private var mirrors: ArrayBuffer[EntityId] = null
+  private var mirrors = ArrayBuffer[EntityId]()
   private var pcRef: ActorRef[PartitionCoordinator.Command] = null
 
   val mirrorCounter: mutable.Map[SuperStep, Int] = new mutable.HashMap().withDefaultValue(0)
@@ -48,8 +48,8 @@ class MainEntity(
       case VertexEntity.Initialize(vid, pid, neigh, mrs, inDeg, replyTo) =>
         vertexId = vid
         partitionId = pid.toShort
-        neighbors = neigh
-        mirrors = mrs
+        neighbors ++= neigh
+        mirrors ++= mrs
         partitionInDegree = inDeg
 
 

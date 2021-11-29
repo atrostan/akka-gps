@@ -39,7 +39,7 @@ class MirrorEntity(
       case VertexEntity.InitializeMirror(vid, pid, m, neighs, inDeg, replyTo) =>
         vertexId = vid
         partitionId = pid.toShort
-        neighbors = neighs
+        neighbors ++= neighs
         main = m
         partitionInDegree = inDeg
         val logStr = s"Received ask to initialize Mirror ${vertexId}_${partitionId}"

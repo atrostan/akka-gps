@@ -47,8 +47,8 @@ object VertexEntity {
   final case class Initialize(
       vertexId: Int,
       partitionId: Int,
-      neighbors: ArrayBuffer[EntityId],
-      mirrors: ArrayBuffer[EntityId],
+      neighbors: List[(EntityId, Int)],
+      mirrors: List[EntityId],
       inDegree: Int,
       replyTo: ActorRef[InitializeResponse]
   ) extends Command
@@ -56,7 +56,7 @@ object VertexEntity {
       vertexId: Int,
       partitionId: Int,
       main: EntityId,
-      neighs: ArrayBuffer[EntityId],
+      neighs: List[(EntityId, Int)],
       inDegree: Int,
       replyTo: ActorRef[InitializeResponse]
   ) extends Command
@@ -96,7 +96,7 @@ trait VertexEntity {
   var vertexId: Int = 0
   var partitionId: Short = 0
   var partitionInDegree: Int = 0 // TODO need to get this
-  var neighbors: ArrayBuffer[EntityId] = ArrayBuffer()
+  var neighbors: ArrayBuffer[(EntityId, Int)] = ArrayBuffer()
   // TODO edgeVal perhaps part of neighbours list (tuple of neigh,edgeVal). And have default value, from Vertex program?
 
   // Dynamic Computation Values
@@ -117,13 +117,13 @@ trait VertexEntity {
   ): Unit = {
     val msgOption: Option[MessageT] = newValue.flatMap(vertexProgram.scatter(vertexId, oldValue, _))
 
-    for (neighbor <- neighbors) {
+    for ((neighborEid, edgeWeight) <- neighbors) {
       // TODO 0 edgeVal for now, we need to implement these. Depends on neighbor!
       val cmd = msgOption match {
         case None      => NeighbourMessage(stepNum + 1, None, None)
-        case Some(msg) => NeighbourMessage(stepNum + 1, Some(0), Some(msg))
+        case Some(msg) => NeighbourMessage(stepNum + 1, Some(edgeWeight), Some(msg))
       }
-      val neighbourRef = shardingRef.entityRefFor(VertexEntity.TypeKey, neighbor.toString())
+      val neighbourRef = shardingRef.entityRefFor(VertexEntity.TypeKey, neighborEid.toString())
       neighbourRef ! cmd
     }
   }

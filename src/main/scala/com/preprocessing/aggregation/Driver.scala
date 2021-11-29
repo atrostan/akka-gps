@@ -5,6 +5,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.{SparkConf, SparkContext}
 
+import java.io.{File, PrintWriter}
 import java.nio.file.Files.createDirectories
 import java.nio.file.{Path, Paths}
 
@@ -30,15 +31,14 @@ object Driver {
     }
     (partitionFolder, numPartitions, sep, workerPaths)
   }
-
   // runMain com.preprocessing.aggregation.Driver --partitionFolder "src/main/resources/graphs/8rmat/partitions/hybrid/bySrc" --numPartitions 4 --sep " " --workerPaths "src/main/resources/paths.yaml"
 
   def main(args: Array[String]): Unit = {
 
-    // local spark config
     val appName: String = "preprocessing.aggregation.Driver"
     val conf = new SparkConf()
       .setAppName(appName)
+      .setMaster("local[*]")
     val sc = new SparkContext(conf)
     sc.setLogLevel("ERROR")
     val spark: SparkSession = SparkSession.builder.getOrCreate
@@ -61,10 +61,21 @@ object Driver {
 
     val (mains, mirrors) = partitionAssignment(degrees, outNeighbors, inDegreesPerPartition)
 
-    // save to file
-    partitionMainsDF(mains, spark, partitionMap)
-    partitionMirrorsDF(mirrors, spark, partitionMap)
+    println("edges")
+    edgeList.collect().sortBy(t => (t._1, t._2)).foreach(println)
+    println("mains")
+    mains.collect().sortBy(t => (t._1)).foreach(println)
 
+    // find out the identity of outgoing neighbours
+    val taggedEdges = tagEdges(mains, edgeList)
+    val taggedMains = tagMains(mains, taggedEdges)
+    val taggedMirrors = tagMirrors(mirrors, taggedEdges)
+
+//      .sortBy(t => (t._1)).collect().foreach(println)
+
+    // save to file
+    partitionMainsDF(taggedMains, spark, partitionMap)
+    partitionMirrorsDF(taggedMirrors, spark, partitionMap)
     // read for debug
     println("#"*68)
     println("DEBUG OUTPUT")

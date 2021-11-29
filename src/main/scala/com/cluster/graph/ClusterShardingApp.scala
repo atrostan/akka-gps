@@ -3,14 +3,17 @@ package com.cluster.graph
 import akka.actor.typed._
 import akka.cluster.{ClusterEvent, Member}
 import com.Typedefs.{EMRef, GCRef, PCRef}
+import com.cluster.graph.EntityManager.{InitializeMains, InitializeMirrors}
 import com.cluster.graph.Init._
 import com.cluster.graph.PartitionCoordinator.BroadcastLocation
 import com.cluster.graph.entity.{EntityId, VertexEntityType}
+import com.preprocessing.partitioning.Util.{readMainPartitionDF, readMirrorPartitionDF, readWorkerPathsFromYaml}
+import com.preprocessing.partitioning.oneDim.{Main, Mirror}
 import com.typesafe.config.{Config, ConfigFactory}
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.{SparkConf, SparkContext}
 
 import scala.collection.mutable.ArrayBuffer
-import com.cluster.graph.entity.{EntityId, VertexEntityType}
-import com.preprocessing.partitioning.oneDim.{Main, Mirror}
 
 object ClusterShardingApp {
 
@@ -41,16 +44,28 @@ object ClusterShardingApp {
 
   def main(args: Array[String]): Unit = {
 
+    val appName: String = "akka.clusterShardingApp"
+    val conf = new SparkConf()
+      .setAppName(appName)
+      .setMaster("local[*]")
+    val sc = new SparkContext(conf)
+    sc.setLogLevel("ERROR")
+    val spark: SparkSession = SparkSession.builder.getOrCreate
+
+    val hadoopConfig = sc.hadoopConfiguration
+    hadoopConfig.set("fs.hdfs.impl", classOf[org.apache.hadoop.hdfs.DistributedFileSystem].getName)
+    hadoopConfig.set("fs.file.impl", classOf[org.apache.hadoop.fs.LocalFileSystem].getName)
+
+    val workerPaths = "src/main/resources/paths.yaml"
+    // a map between partition ids to location on hdfs of mains, mirrors for that partition
+    val workerMap: Map[Int, String] = readWorkerPathsFromYaml(workerPaths: String)
+
     val png = initGraphPartitioning(numberOfShards)
+
+    val config = ConfigFactory.load("cluster")
+    println(config.getConfig("ec2"))
     val nodesUp = collection.mutable.Set[Member]()
-    for (m <- png.mainArray) {
-      var s = ""
-      s += s"${m.toString()}\n"
-      s += s"neighbours:\t${m.neighbors.toString()}\n"
-      s += s"mirrors:\t${m.mirrors.toString()}\n"
-      println(s)
-    }
-    return
+
     println(s"Initializing cluster with ${nNodes} compute nodes")
 
     println("Initializing domain listener")
@@ -66,10 +81,15 @@ object ClusterShardingApp {
     val shardPorts = ArrayBuffer[Int](25252, 25253, 25254, 25255)
     val shardActors = ArrayBuffer[ActorSystem[EntityManager.Command]]()
     var pid = 0
-    val nMains = png.mainArray.length
-    val nMirrors = png.mainArray.map(m => m.mirrors.length).sum
-
+    var nMains = 0
+    var nMirrors = 0
     for (shardPort <- shardPorts) {
+      val path = workerMap(pid)
+      val mains = readMainPartitionDF(path + "/mains", spark).collect()
+      nMains += mains.length
+      val mirrors = readMirrorPartitionDF(path + "/mirrors", spark).collect()
+      nMirrors += mirrors.length
+
       val pcPort = shardPort + numberOfShards
       val shardConfig = createConfig("shard", shardPort)
       val pcConfig = createConfig("partitionCoordinator", pcPort)
@@ -78,7 +98,7 @@ object ClusterShardingApp {
       partCoordMap(pid) = pcPort
 
       val entityManager = ActorSystem[EntityManager.Command](
-        EntityManager(partitionMap, png.mainArray, pid, png.inEdgePartition),
+        EntityManager(partitionMap, png.mainArray, pid, png.inEdgePartition, mains, mirrors),
         "ClusterSystem",
         shardConfig
       )
@@ -87,12 +107,13 @@ object ClusterShardingApp {
       pid += 1
     }
 
+
     val frontPort = shardPorts.last + 1
     val frontRole = "front"
 
     val frontConfig = createConfig(frontRole, frontPort)
     val entityManager = ActorSystem[EntityManager.Command](
-      EntityManager(partitionMap, png.mainArray, pid, png.inEdgePartition),
+      EntityManager(partitionMap, png.mainArray, pid, png.inEdgePartition, null, null),
       "ClusterSystem",
       frontConfig
     )
@@ -133,6 +154,33 @@ object ClusterShardingApp {
     println("Broadcasting the Global Coordinator address to all Partition Coordinators")
     broadcastGCtoPCs(gcRef, entityManager.scheduler)
 
+    println("here are the em refs:")
+    emRefs.foreach(println)
+
+    for (pid <- 0 until numberOfShards) {
+      val emRef = emRefs(pid)
+      emRef ! InitializeMains
+      emRef ! InitializeMirrors
+    }
+
+
+    var nMainsInitialized = 0
+    var nMirrorsInitialized = 0
+
+    for (pid <- 0 until numberOfShards) {
+      val emRef: EMRef = emRefs(pid)
+      nMainsInitialized += getNMainsInitialized(entityManager, emRef)
+      nMirrorsInitialized += getNMirrorsInitialized(entityManager, emRef)
+    }
+
+
+    println("Checking that all Mains, Mirrors have been initialized...")
+    println(s"Total Mains Initialized: $nMainsInitialized")
+    println(s"Total Mirrors Initialized: $nMirrorsInitialized")
+    assert(nMainsInitialized == nMains)
+    assert(nMirrorsInitialized == nMirrors)
+    return
+
     println(s"Initializing ${nMains} Mains and ${nMirrors} Mirrors...")
     for (main <- png.mainArray) {
       entityManager ! EntityManager.Initialize(
@@ -150,14 +198,7 @@ object ClusterShardingApp {
       )
     }
 
-    val nMainsInitialized = getNMainsInitialized(entityManager)
-    val nMirrorsInitialized = getNMirrorsInitialized(entityManager)
 
-    println("Checking that all Mains, Mirrors have been initialized...")
-    println(s"Total Mains Initialized: $nMainsInitialized")
-    println(s"Total Mirrors Initialized: $nMirrorsInitialized")
-    assert(nMainsInitialized == nMains)
-    assert(nMirrorsInitialized == nMirrors)
     //     after initialization, each partition coordinator should broadcast its location to its mains
     for ((pid, pcRef) <- pcRefs) {
       println(s"PC${pid} Broadcasting location to its main")

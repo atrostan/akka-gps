@@ -1,5 +1,5 @@
 workers:
-  - src/main/resources/graphs/8rmat/partitions/hybrid/bySrc/p0
-  - src/main/resources/graphs/8rmat/partitions/hybrid/bySrc/p1
-  - src/main/resources/graphs/8rmat/partitions/hybrid/bySrc/p2
-  - src/main/resources/graphs/8rmat/partitions/hybrid/bySrc/p3
+  - /home/atrostan/Workspace/akka-gps/src/main/resources/graphs/8rmat/partitions/hybrid/bySrc/p0
+  - /home/atrostan/Workspace/akka-gps/src/main/resources/graphs/8rmat/partitions/hybrid/bySrc/p1
+  - /home/atrostan/Workspace/akka-gps/src/main/resources/graphs/8rmat/partitions/hybrid/bySrc/p2
+  - /home/atrostan/Workspace/akka-gps/src/main/resources/graphs/8rmat/partitions/hybrid/bySrc/p3

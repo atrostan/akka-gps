@@ -53,10 +53,24 @@ object Typedefs {
       Int // indegree in partition pid
   )
 
+  type TaggedMainRow = (
+      (Int, Int), // (vid, pid)
+      Set[_ <: Int], // partitions that contain mirrors
+      List[(Int, Int, Int)], // list of tagged outgoing edges on partition pid
+      Int // indegree in partition pid
+  )
+
   type MirrorRow = (
       (Int, Int), // (vid, pid)
       Int, // partition that contains main
       List[(Int, Int)], // list of outgoing edges on partition pid
+      Int // indegree in partition pid
+  )
+
+  type TaggedMirrorRow = (
+      (Int, Int), // (vid, pid)
+      Int, // partition that contains main
+      List[(Int, Int, Int)], // list of tagged outgoing edges on partition pid
       Int // indegree in partition pid
   )
 }
