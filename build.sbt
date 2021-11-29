@@ -19,14 +19,6 @@ ThisBuild / assemblyMergeStrategy := {
   case x => MergeStrategy.first
 }
 
-//ThisBuild / assemblyMergeStrategy := {
-//  case PathList("META-INF", "services", "org.apache.hadoop.fs.FileSystem") =>
-//    MergeStrategy.filterDistinctLines
-////  case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
-//  case PathList("META-INF", ps @ _*) => MergeStrategy.discard
-//  case x => MergeStrategy.first
-//}
-
 lazy val `akka-gps` = project
   .in(file("."))
   .settings(multiJvmSettings: _*)

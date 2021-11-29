@@ -74,7 +74,7 @@ partitionerClass="${preprocessingPackage}.partitioning.Driver"
 aggregatorClass="${preprocessingPackage}.aggregation.Driver"
 
 # directory that stores the graph
-graphName="8rmat"
+graphName="symmRmat"
 graphDir="${akka_gps_home}/src/main/resources/graphs/${graphName}"
 
 # original, uncompressed edgelist

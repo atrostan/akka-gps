@@ -741,13 +741,13 @@ object Util {
     pMap.toMap
   }
 
-  /** Tag each edge in the graph using the following definitions: Each edge is assigned a partition
-    * in the partitioning step. In addition, the main assignment step assigned each vertex as a main
+  /** Tag each edge in the graph using the following definitions: Each edge is assigned to a partition
+    * in the partitioning step. Also, the main assignment step assigned each vertex as a main
     * vertex to some partition. In the following, an edge is between source id -> destination id:
-    *
-    * if an edge is between main -> main, label that edge as 0 if an edge is between main -> mirror,
-    * label that edge as 1 if an edge is between mirror -> main, label that edge as 2 if an edge is
-    * between mirror -> mirror, label that edge as 3
+    * if an edge is between main -> main, label that edge as 0
+    * if an edge is between main -> mirror, label that edge as 1
+    * if an edge is between mirror -> main, label that edge as 2
+    * if an edge is between mirror -> mirror, label that edge as 3
     * @param mains
     * @param edgeList
     * @return
