@@ -12,8 +12,17 @@ import com.preprocessing.partitioning.oneDim.{Main, Mirror}
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.{SparkConf, SparkContext}
-
 import scala.collection.mutable.ArrayBuffer
+import akka.actor.typed.scaladsl.AskPattern.Askable
+import scala.collection.mutable.ArrayBuffer
+import com.cluster.graph.entity.{EntityId, VertexEntityType}
+import com.preprocessing.partitioning.oneDim.{Main, Mirror}
+import com.algorithm.Colour
+import scala.concurrent.{Await, Future}
+import akka.util.Timeout
+import scala.concurrent.duration._
+import com.cluster.graph.GlobalCoordinator.FinalValuesResponseComplete
+import com.cluster.graph.GlobalCoordinator.FinalValuesResponseNotFinished
 
 object ClusterShardingApp {
 
@@ -216,6 +225,33 @@ object ClusterShardingApp {
     assert(totalMainsAckd == nMains)
     gcRef ! GlobalCoordinator.BEGIN()
     // TODO at beginning send, BEGIN(0)
+
+    // Wait until finished
+    
+
+    var finalVals: Map[Int, Option[Colour]] = null
+    while(null == finalVals){
+      Thread.sleep(1000)
+
+      val timeout: Timeout = 5.seconds
+      val sched = entityManager.scheduler
+      val future: Future[GlobalCoordinator.FinalValuesResponse] = gcRef.ask(ref => GlobalCoordinator.GetFinalValues(ref))(timeout,sched)
+      Await.result(future, Duration.Inf) match {
+        case FinalValuesResponseComplete(valueMap) => {
+          finalVals = valueMap
+        }
+        case FinalValuesResponseNotFinished => ()
+      }
+
+    }
+
+    println("Final Values from main app:")
+    for((key, value) <- finalVals){
+      println(s"$key -> $value")
+    }
+
+    // TODO shut down actor system
+
     // increment mains and their mirrors
 //    for (main <- png.mainArray)
 //      entityManager ! EntityManager.AddOne(

@@ -5,7 +5,7 @@ import scalax.collection.Graph // or scalax.collection.mutable.Graph
 import scalax.collection.GraphPredef._, scalax.collection.GraphEdge._
 import scalax.collection.edge.WDiEdge
 
-object WCC extends VertexProgram[Int, Int, Int, Int, Int] {
+object WCC extends VertexProgram[Int, Int, Int, Int] {
 
   override val mode: VertexProgram.Mode = VertexProgram.Bidirectional
 
@@ -17,16 +17,16 @@ object WCC extends VertexProgram[Int, Int, Int, Int, Int] {
     Math.min(a, b)
   }
 
-  override def apply(superStepNumber: Int, thisVertexId: Int, oldVal: Int, total: Option[Int]): Int = {
+  override def apply(superStepNumber: Int, thisVertex: VertexInfo, oldVal: Int, total: Option[Int]): Int = {
     if(superStepNumber == 0) {
-      thisVertexId
+      thisVertex.id
     } else total match {
       case Some(componentId) => Math.min(oldVal, componentId)
       case None => oldVal
     }
   }
 
-  override def scatter(thisVertexId: Int, oldVal: Int, newVal: Int): Option[Int] = {
+  override def scatter(superStepNumber: Int, thisVertex: VertexInfo, oldVal: Int, newVal: Int): Option[Int] = {
     if(newVal < oldVal) {
       Some(newVal)
     } else {
@@ -35,7 +35,7 @@ object WCC extends VertexProgram[Int, Int, Int, Int, Int] {
     }
   }
 
-  override def voteToHalt(oldVal: Int, newVal: Int): Boolean = true
+  override def voteToHalt(superStepNumber: Int, oldVal: Int, newVal: Int): Boolean = true
 
   override val defaultVertexValue: Int = Integer.MAX_VALUE
 

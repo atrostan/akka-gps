@@ -10,6 +10,7 @@ import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityContext, Ent
 
 import com.cluster.graph.PartitionCoordinator
 import VertexEntity._
+import com.algorithm.VertexInfo
 
 // Vertex actor
 class MainEntity(
@@ -51,6 +52,7 @@ class MainEntity(
         neighbors ++= neigh
         mirrors ++= mrs
         partitionInDegree = inDeg
+        thisVertexInfo = VertexInfo(vertexId, neighbors.size)
 
 
         val logStr = s"Received ask to initialize Main ${vertexId}_${partitionId}"
@@ -105,6 +107,11 @@ class MainEntity(
         Behaviors.same
       }
 
+      case GetFinalValue => {
+        pcRef ! PartitionCoordinator.FinalValue(vertexId, currentValue)
+        Behaviors.same
+      }
+
       case VertexEntity.Idle =>
         entityContext.shard ! ClusterSharding.Passivate(ctx.self)
         Behaviors.same
@@ -149,7 +156,7 @@ class MainEntity(
       case _ => {
         // Continue
 
-        val newVal = vertexProgram.apply(stepNum, vertexId, currentValue, total)
+        val newVal = vertexProgram.apply(stepNum, thisVertexInfo, currentValue, total)
         val oldVal = currentValue
         currentValue = newVal
         println(s"step: ${stepNum} cont v${this.vertexId}: color:${currentValue}")
@@ -160,7 +167,7 @@ class MainEntity(
 //          println(mirrorRef)
           mirrorRef ! cmd
         }
-        active = !vertexProgram.voteToHalt(oldVal, newVal)
+        active = !vertexProgram.voteToHalt(stepNum, oldVal, newVal)
         localScatter(stepNum, oldVal, Some(newVal), sharding)
         pcRef ! PartitionCoordinator.DONE(stepNum) // TODO change to new PC command
       }

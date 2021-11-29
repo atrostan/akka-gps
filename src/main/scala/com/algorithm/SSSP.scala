@@ -1,6 +1,6 @@
 package com.algorithm
 
-object SSSP extends VertexProgram[Int, Int, Int, Int, Int] {
+object SSSP extends VertexProgram[Int, Int, Int, Int] {
 
   override val mode = VertexProgram.Outwards
 
@@ -14,11 +14,11 @@ object SSSP extends VertexProgram[Int, Int, Int, Int, Int] {
 
   override def apply(
       superStepNumber: Int,
-      thisVertexId: Int,
+      thisVertex: VertexInfo,
       oldVal: Int,
       total: Option[Int]
   ): Int = {
-    if (thisVertexId == 0) {
+    if (thisVertex.id == 0) {
       0
     } else {
       total match {
@@ -28,7 +28,7 @@ object SSSP extends VertexProgram[Int, Int, Int, Int, Int] {
     }
   }
 
-  override def scatter(thisVertexId: Int, oldVal: Int, newVal: Int): Option[Int] = {
+  override def scatter(superStepNumber: Int, thisVertex: VertexInfo, oldVal: Int, newVal: Int): Option[Int] = {
     if (newVal < oldVal) {
       Some(newVal)
     } else {
@@ -37,7 +37,7 @@ object SSSP extends VertexProgram[Int, Int, Int, Int, Int] {
     }
   }
 
-  override def voteToHalt(oldVal: Int, newVal: Int): Boolean = true
+  override def voteToHalt(superStepNumber: Int, oldVal: Int, newVal: Int): Boolean = true
 
   override val defaultActivationStatus: Boolean = true
 
