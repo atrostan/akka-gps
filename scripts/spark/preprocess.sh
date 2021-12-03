@@ -74,7 +74,7 @@ partitionerClass="${preprocessingPackage}.partitioning.Driver"
 aggregatorClass="${preprocessingPackage}.aggregation.Driver"
 
 # directory that stores the graph
-graphName="symmRmat"
+graphName="testColor"
 graphDir="${akka_gps_home}/src/main/resources/graphs/${graphName}"
 
 # original, uncompressed edgelist
@@ -83,8 +83,8 @@ origGraphPath="\"${graphDir}/orig.net\""
 # directory that will store the compressed edgelist
 compressedDirName="compressed"
 outputFilename="\"${graphDir}/${compressedDirName}\"" 
-compressedGraphPath="\"${outputFilename}.parquet\""
-
+#compressedGraphPath="\"${outputFilename}.parquet\""
+compressedGraphPath="\"/home/atrostan/Workspace/akka-gps/src/main/resources/graphs/testColor/compressed.parquet\""
 sep="\" \""
 
 # whether the original edge list stores weights or not (true or false)
@@ -92,20 +92,21 @@ isWeighted="\"false\""
 
 graphYaml="${graphDir}/stats.yml"
 outputPartitionsPath="\"${graphDir}/partitions\""
-threshold=7
+threshold=3
 numPartitions=4
 
 partitioners=(
-#  1 # 1d
+  1 # 1d
 #  2 # 2d
-  3 # Hybrid
+#  3 # Hybrid
 )
 
 partitionBys=(
   "\"true\"" # partition by source
 #  "\"false\"" # partition by destination
 )
-
+Edges=20
+Nodes=6
 # Compress a graph
 compressSubmit="${spark_submit} \
 --class ${compressorClass} \
@@ -148,7 +149,7 @@ then
   done
 fi
 
-partitionerFolder="hybrid"
+partitionerFolder="1d"
 modeFolder="bySrc"
 
 partitionFolder="\"${outputPartitionsPath}/${partitionerFolder}/${modeFolder}/\""

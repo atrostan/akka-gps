@@ -83,6 +83,8 @@ class EntityManager(
             ).toList
             totalMainsInitialized = blockInitMain(mainERef, eid, neighbors, mirrors, partitionInDegree, totalMainsInitialized)
         }
+        println(s"mains on pid ${pid}")
+        mains.foreach(x => println(pid, x))
         println(s"${pid} total mains initialized: ", totalMainsInitialized)
         Behaviors.same
 
@@ -103,6 +105,8 @@ class EntityManager(
             }
             totalMirrorsInitialized = blockInitMirror(mirrorERef, eid, mid, neighbors,  partitionInDegree, totalMirrorsInitialized)
         }
+        println(s"mirrors on pid ${pid}")
+        mirrors.foreach(x => println(pid, x))
         println(s"${pid} total mirrors initialized: ", totalMirrorsInitialized)
         Behaviors.same
 

@@ -2,11 +2,12 @@ package com.preprocessing.edgeList
 
 import com.Typedefs.{UnweightedEdge, WeightedEdge}
 import com.preprocessing.partitioning.Util.{readEdgeList, saveUnweightedRDDAsDF, saveWeightedRDDAsDF}
+import org.apache.hadoop.fs.{FSDataOutputStream, FileSystem, Path}
 import org.apache.spark.{SparkConf, SparkContext}
 
-import java.io.{File, PrintWriter}
+import java.io.{BufferedOutputStream, File, PrintWriter}
 import org.apache.spark.sql.{Row, SQLContext, SparkSession}
-import org.apache.spark.sql.types.{LongType, IntegerType, StringType, StructField, StructType}
+import org.apache.spark.sql.types.{IntegerType, LongType, StringType, StructField, StructType}
 
 object Driver {
   """
@@ -68,6 +69,35 @@ The edgeList.Compressor will produce
     pw.close
   }
 
+  /**
+    * Save the Number of Nodes (n) and Edges (m) in the compressed representation to a .yml file in the same directory
+    * as the input graph (on HDFS) so that n and m may be reused in the downstream partitioning and cluster applications.
+    * @param infile: the location of the uncompressed graph
+    * @param sc: SparkContext (needed for hadoop config)
+    * @param c: Compressor
+    */
+  def exportYMLtoHDFS(infile: String, c: Compressor, sc: SparkContext): Unit = {
+    val ymlPath = infile
+      .split('/')
+      .dropRight(1)
+      .mkString("/") + "/stats.yml"
+
+    println(s"Saving nNodes, nEdges to $ymlPath")
+
+    val hdfsConf = sc.hadoopConfiguration
+    val fileSystem: FileSystem = FileSystem.get(hdfsConf)
+    val path = new Path(ymlPath)
+    if (fileSystem.exists(path)) fileSystem.delete(path, true)
+
+    val hdfsFileOS: FSDataOutputStream = fileSystem.create(path);
+    // create a buffered output stream using the FSDataOutputStream
+    val bos = new BufferedOutputStream(hdfsFileOS)
+
+    bos.write(s"Nodes:\t ${c.nNodes}\n".getBytes("UTF-8"))
+    bos.write(s"Edges:\t ${c.nEdges}\n".getBytes("UTF-8"))
+    bos.close()
+  }
+
   def main(args: Array[String]): Unit = {
 
     val appName: String = "edgeList.Compressor.Driver"
@@ -101,7 +131,11 @@ The edgeList.Compressor will produce
     val c = new Compressor(edgeList)
 
     val compressed = c.compress()
-    exportYML(infile, c)
+//    if ("infile".contains("hdfs:/")) {
+//      exportYMLtoHDFS(infile, c, sc)
+//    } else {
+//      exportYML(infile, c)
+//    }
 
     try {
       compressed match {

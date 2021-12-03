@@ -321,6 +321,7 @@ object Init {
     val mainInitResult = Await.result(future, waitTime)
     mainInitResult match {
       case VertexEntity.InitializeResponse(_) =>
+        // println(s"initialized main ${eid.vertexId} on partition ${eid.partitionId} with neighbors ${neighbors.sortBy(n => n._1.vertexId)} and ${inDegree} incoming neighbours")
         totalMainsInitialized + 1
       case _ =>
         println(s"Failed to Initialize Main ${eid.vertexId}_${eid.partitionId}")
@@ -358,6 +359,7 @@ object Init {
     val mirrorInitResult = Await.result(future, waitTime)
     mirrorInitResult match {
       case VertexEntity.InitializeResponse(_) =>
+        // println(s"initialized mirror ${m.vertexId} on partition ${m.partitionId} with neighbors ${neighbors.sortBy(n => n._1.vertexId)} and ${inDegree} incoming neighbours")
         totalMirrorsInitialized + 1
       case _ =>
         println(s"Failed to Initialize Main ${eid.vertexId}_${eid.partitionId}")

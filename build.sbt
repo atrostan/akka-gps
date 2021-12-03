@@ -7,16 +7,18 @@ version := "1.0"
 
 lazy val akkaVersion = "2.6.16"
 lazy val sparkVersion = "3.1.2"
+val AkkaManagementVersion = "1.1.1"
+val AkkaHttpVersion = "10.2.7"
 
 val meta = """META.INF(.)*""".r
 ThisBuild / assemblyMergeStrategy := {
-  case PathList("javax", "servlet", xs @ _*) => MergeStrategy.first
+  case PathList("javax", "servlet", xs @ _*)         => MergeStrategy.first
   case PathList(ps @ _*) if ps.last endsWith ".html" => MergeStrategy.first
-  case n if n.contains("services") => MergeStrategy.concat
-  case n if n.startsWith("reference.conf") => MergeStrategy.concat
-  case n if n.endsWith(".conf") => MergeStrategy.concat
-  case meta(_) => MergeStrategy.discard
-  case x => MergeStrategy.first
+  case n if n.contains("services")                   => MergeStrategy.concat
+  case n if n.startsWith("reference.conf")           => MergeStrategy.concat
+  case n if n.endsWith(".conf")                      => MergeStrategy.concat
+  case meta(_)                                       => MergeStrategy.discard
+  case x                                             => MergeStrategy.first
 }
 
 lazy val `akka-gps` = project
@@ -48,6 +50,7 @@ lazy val `akka-gps` = project
       "com.typesafe.akka" %% "akka-actor-typed" % akkaVersion,
       "com.typesafe.akka" %% "akka-cluster-typed" % akkaVersion,
       "com.typesafe.akka" %% "akka-serialization-jackson" % akkaVersion,
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.12.2",
       "com.typesafe.akka" %% "akka-cluster-sharding-typed" % akkaVersion,
       "com.typesafe.akka" %% "akka-multi-node-testkit" % akkaVersion % Test,
       "org.scalatest" %% "scalatest" % "3.0.8" % Test,
@@ -55,19 +58,19 @@ lazy val `akka-gps` = project
       "com.typesafe.akka" %% "akka-persistence-typed" % akkaVersion,
       "com.typesafe.akka" %% "akka-persistence-testkit" % akkaVersion % Test,
       "org.apache.spark" %% "spark-core" % sparkVersion,
-      "org.apache.spark" %% "spark-streaming" % sparkVersion,
+//      "org.apache.spark" %% "spark-streaming" % sparkVersion,
       "org.apache.spark" %% "spark-sql" % sparkVersion,
-      "org.apache.spark" %% "spark-avro" % sparkVersion,
+//      "org.apache.spark" %% "spark-avro" % sparkVersion,
       "org.yaml" % "snakeyaml" % "1.29",
       "org.apache.hadoop" % "hadoop-hdfs" % "3.3.1",
-      "org.scala-graph" %% "graph-core" % "1.12.5"
+      "org.scala-graph" %% "graph-core" % "1.12.5",
     ),
     run / fork := false,
     Global / cancelable := false,
     // disable parallel tests
     Test / parallelExecution := false,
     licenses := Seq(("CC0", url("http://creativecommons.org/publicdomain/zero/1.0"))),
-    assembly / assemblyJarName := "akka-gps.jar",
+    assembly / assemblyJarName := "akka-gps.jar"
 //    assembly / mainClass := Some("com.preprocessing.edgeList.Driver"),
   )
   .configs(MultiJvm)

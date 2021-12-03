@@ -1,23 +1,32 @@
 package com.cluster.graph
 
 import akka.actor.typed._
+import akka.actor.typed.scaladsl.AskPattern.Askable
 import akka.cluster.{ClusterEvent, Member}
+import akka.util.Timeout
 import com.Typedefs.{EMRef, GCRef, PCRef}
+import com.algorithm.Colour
 import com.cluster.graph.EntityManager.{InitializeMains, InitializeMirrors}
+import com.cluster.graph.GlobalCoordinator.{
+  FinalValuesResponseComplete,
+  FinalValuesResponseNotFinished
+}
 import com.cluster.graph.Init._
 import com.cluster.graph.PartitionCoordinator.BroadcastLocation
-import com.preprocessing.partitioning.Util.{readMainPartitionDF, readMirrorPartitionDF, readWorkerPathsFromYaml}
+import com.preprocessing.partitioning.Util.{
+  readMainPartitionDF,
+  readMirrorPartitionDF,
+  readPartitionsAndJoin,
+  readWorkerPathsFromYaml
+}
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.{SparkConf, SparkContext}
+
+import scala.collection.immutable.TreeMap
 import scala.collection.mutable.ArrayBuffer
-import akka.actor.typed.scaladsl.AskPattern.Askable
-import com.algorithm.Colour
-import scala.concurrent.{Await, Future}
-import akka.util.Timeout
 import scala.concurrent.duration._
-import com.cluster.graph.GlobalCoordinator.FinalValuesResponseComplete
-import com.cluster.graph.GlobalCoordinator.FinalValuesResponseNotFinished
+import scala.concurrent.{Await, Future}
 
 object ClusterShardingApp {
 
@@ -55,7 +64,8 @@ object ClusterShardingApp {
     val sc = new SparkContext(conf)
     sc.setLogLevel("ERROR")
     val spark: SparkSession = SparkSession.builder.getOrCreate
-    val actorSystems = ArrayBuffer[ActorSystem[ClusterEvent.ClusterDomainEvent with EntityManager.Command]]()
+    val actorSystems =
+      ArrayBuffer[ActorSystem[ClusterEvent.ClusterDomainEvent with EntityManager.Command]]()
     val hadoopConfig = sc.hadoopConfiguration
     hadoopConfig.set("fs.hdfs.impl", classOf[org.apache.hadoop.hdfs.DistributedFileSystem].getName)
     hadoopConfig.set("fs.file.impl", classOf[org.apache.hadoop.fs.LocalFileSystem].getName)
@@ -196,15 +206,18 @@ object ClusterShardingApp {
     // TODO at beginning send, BEGIN(0)
 
     // Wait until finished
-    
 
-    var finalVals: Map[Int, Option[Colour]] = null
-    while(null == finalVals){
+    type FinalValueType = Option[Colour]
+//    type FinalValueType = Int
+
+    var finalVals: Map[Int, FinalValueType] = null
+    while (null == finalVals) {
       Thread.sleep(1000)
 
       val timeout: Timeout = 5.seconds
       val sched = entityManager.scheduler
-      val future: Future[GlobalCoordinator.FinalValuesResponse] = gcRef.ask(ref => GlobalCoordinator.GetFinalValues(ref))(timeout,sched)
+      val future: Future[GlobalCoordinator.FinalValuesResponse] =
+        gcRef.ask(ref => GlobalCoordinator.GetFinalValues(ref))(timeout, sched)
       Await.result(future, Duration.Inf) match {
         case FinalValuesResponseComplete(valueMap) =>
           finalVals = valueMap
@@ -213,20 +226,64 @@ object ClusterShardingApp {
     }
 
     println("Final Values from main app:")
-    finalVals.map{ case (k, v) =>
-      v match {
-        case Some(c: Colour) => (k, c.num)
-        case _ => (k, -1)
-      }
-    }.toList.sorted.foreach(println)
-
-    def shutdown(systems: ArrayBuffer[ActorSystem[ClusterEvent.ClusterDomainEvent with EntityManager.Command]]): Unit = {
+    finalVals.foreach(println)
+    def shutdown(
+        systems: ArrayBuffer[
+          ActorSystem[ClusterEvent.ClusterDomainEvent with EntityManager.Command]
+        ]
+    ): Unit = {
       for (s <- systems) {
         println(s"terminating ${s}")
         s.terminate()
       }
     }
 
+    // put colouring correctness check in here for now; todo - find a place in repo for algorithm vertification
+    val partitionDir = "src/main/resources/graphs/symmRmat/partitions/hybrid/bySrc"
+    val sep = " "
+    def checkCorrectness(coloring: TreeMap[Int, Int]) = {
+      val sc = new SparkContext(conf)
+
+      val partitionedEdgeList = readPartitionsAndJoin(
+        sc: SparkContext,
+        partitionDir: String,
+        numberOfShards: Int,
+        sep: String
+      )
+      val edgeList = partitionedEdgeList.map{
+        case (pid, (src, dest, wt)) => (src, dest)
+      }.collect()
+      val adjList = collection.mutable.TreeMap[Int, collection.mutable.ArrayBuffer[Int]]()
+
+      for (e <- edgeList) {
+        println(e)
+        val src = e._1
+        val dest = e._2
+        if (!adjList.contains(src)) {
+
+          adjList(src) = ArrayBuffer[Int]() += dest
+        }
+        else {
+          adjList(src) += dest
+        }
+      }
+
+      val nNodes = adjList.size
+      adjList.foreach(println)
+      for (src <- 0 until nNodes) {
+        val srcColor = coloring(src)
+        for (dest <- adjList(src)) {
+          val destColor = coloring(dest)
+          if (srcColor == destColor){
+            println(s"${src} and ${dest} have the same colour: ${srcColor}")
+          }
+        }
+      }
+      println("Colouring Valid!")
+      sc.stop()
+    }
+
+//    checkCorrectness(res)
     shutdown(actorSystems)
     println("Bye Bye!")
 

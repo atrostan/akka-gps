@@ -50,7 +50,9 @@ object Driver {
     val (partitionFolder, numPartitions, sep, workerPaths) = parseArgs(args)
 
     // a map between partition ids to location on hdfs of mains, mirrors for that partition
-    val partitionMap = readWorkerPathsFromYaml(workerPaths: String)
+    val partitionMap = (0 until numPartitions)
+      .map(i => (i, partitionFolder + s"/p$i")).toMap
+
     // create mains, mirrors partition dirs if they don't exist
     for ((_, path) <- partitionMap) { createDirectories(Paths.get(path)) }
 

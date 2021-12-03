@@ -688,6 +688,8 @@ object Util {
       }
       .map(t => ((t._1, t._2), t._3))
 
+
+
     vertexMainAndMirrors
       .cache() // cache the mains in memory so that their correct location can be propagated to their mirrors
     val mirrors = vertexMainAndMirrors.flatMap { case ((vid: Int, _), mirrorPids: Set[Int]) =>
