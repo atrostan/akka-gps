@@ -10,7 +10,6 @@ import akka.util.Timeout
 import com.CborSerializable
 import com.cluster.graph.Init.{blockInitMain, blockInitMirror, blockInitPartitionCoordinator}
 import com.cluster.graph.entity._
-import com.preprocessing.partitioning.oneDim.Main
 import com.typesafe.config.ConfigFactory
 
 import scala.collection.mutable.ArrayBuffer
@@ -25,9 +24,9 @@ import scala.concurrent.duration._
 class EntityManager(
     ctx: ActorContext[EntityManager.Command],
     partitionMap: collection.mutable.Map[Int, Int],
-    mainArray: Array[Main],
     pid: Int,
-    inEdgePartition: Array[collection.mutable.Map[Int, Int]]
+    mains: Array[(Int, Set[Int], List[(Int, Int, Int)], Int)],
+    mirrors: Array[(Int, Int, List[(Int, Int, Int)], Int)]
 ) extends AbstractBehavior[EntityManager.Command](ctx) {
 
   import EntityManager._
@@ -65,9 +64,50 @@ class EntityManager(
 
   override def onMessage(msg: EntityManager.Command): Behavior[EntityManager.Command] = {
     msg match {
-      case Initialize(eCl, vid, pid, neighbors) =>
-        val eid = new EntityId(eCl, vid, pid)
-        initMainAndMirrors(eid, neighbors)
+      case InitializeMains =>
+        mains.map {
+          case (vid, mirrorPids, neighs, partitionInDegree) =>
+            val eid = new EntityId(VertexEntityType.Main.toString(), vid, pid)
+            val mainERef: EntityRef[VertexEntity.Initialize] =
+              sharding.entityRefFor(VertexEntity.TypeKey, eid.toString)
+            val neighbors = neighs.map {
+              case (dest, wt, tag) =>
+                if (tag == 0) { // main -> main
+                  (new EntityId(VertexEntityType.Main.toString(), dest, pid), wt)
+                } else { // main -> mirror
+                  (new EntityId(VertexEntityType.Mirror.toString(), dest, pid), wt)
+                }
+            }
+            val mirrors = mirrorPids.map(pid =>
+              new EntityId(VertexEntityType.Mirror.toString(), vid, pid)
+            ).toList
+            totalMainsInitialized = blockInitMain(mainERef, eid, neighbors, mirrors, partitionInDegree, totalMainsInitialized)
+        }
+        println(s"mains on pid ${pid}")
+        mains.foreach(x => println(pid, x))
+        println(s"${pid} total mains initialized: ", totalMainsInitialized)
+        Behaviors.same
+
+      case InitializeMirrors =>
+        mirrors.map {
+          case (vid, mainPid, neighs, partitionInDegree) =>
+            val mid = new EntityId(VertexEntityType.Main.toString(), vid, mainPid)
+            val eid = new EntityId(VertexEntityType.Mirror.toString(), vid, pid)
+            val mirrorERef: EntityRef[VertexEntity.Command] =
+              sharding.entityRefFor(VertexEntity.TypeKey, eid.toString)
+            val neighbors = neighs.map {
+              case (dest, wt, tag) =>
+                if (tag == 2) { // mirror -> main
+                  (new EntityId(VertexEntityType.Main.toString(), dest, pid), wt)
+                } else { // mirror -> mirror
+                  (new EntityId(VertexEntityType.Mirror.toString(), dest, pid), wt)
+                }
+            }
+            totalMirrorsInitialized = blockInitMirror(mirrorERef, eid, mid, neighbors,  partitionInDegree, totalMirrorsInitialized)
+        }
+        println(s"mirrors on pid ${pid}")
+        mirrors.foreach(x => println(pid, x))
+        println(s"${pid} total mirrors initialized: ", totalMirrorsInitialized)
         Behaviors.same
 
       case SpawnPC(pid) =>
@@ -83,12 +123,6 @@ class EntityManager(
           ctx.system.receptionist.ask(replyTo => Receptionist.Find(serviceKey, replyTo))
         val result = Await.result(f, waitTime)
         replyTo ! RefResponseFromReceptionist(result)
-        Behaviors.same
-
-      case AddOne(eCl, vid, pid) =>
-        val eid = new EntityId(eCl, vid, pid)
-        // increment all mirrors of myself
-        tellMainAndMirrors(VertexEntity.Increment, eid)
         Behaviors.same
 
       case GetSum(eCl, vid, pid) =>
@@ -123,15 +157,12 @@ class EntityManager(
   }
 
   def spawnPartitionCoordinator(pid: Int): ActorRef[PartitionCoordinator.Command] = {
-    val mains = mainArray
-      .filter(m => m.partition.id == pid)
-      .map(m => new EntityId("Main", m.id, pid))
-      .toList
+    val ms = mains.map(m => new EntityId("Main", m._1, pid)).toList
     val pcChild = ctx.spawn(
-      Behaviors.supervise(PartitionCoordinator(mains, pid)).onFailure(SupervisorStrategy.restart),
+      Behaviors.supervise(PartitionCoordinator(ms, pid)).onFailure(SupervisorStrategy.restart),
       name = s"pc$pid"
     )
-    blockInitPartitionCoordinator(pcChild, mains, pid, scheduler)
+    blockInitPartitionCoordinator(pcChild, ms, pid, scheduler)
     pcChild
   }
 
@@ -142,80 +173,35 @@ class EntityManager(
     )
     gcChild
   }
-
-  // Initialize vertex. If the vertex is a main, tell the command to all its mirrors.
-  // TODO; should be asynchronous; before beginning computation, we must ensure all main and mirror
-  // are initialized
-  def initMainAndMirrors(
-      eid: EntityId,
-      neighbors: ArrayBuffer[EntityId]
-  ): Unit = {
-    val entityRef: EntityRef[VertexEntity.Command] =
-      sharding.entityRefFor(VertexEntity.TypeKey, eid.toString)
-    // initialize all mirrors of main // TODO Review main check is needed anymore
-    if (isMain(eid)) {
-      val mainERef: EntityRef[VertexEntity.Initialize] =
-        sharding.entityRefFor(VertexEntity.TypeKey, eid.toString)
-      val mirrors = mainArray(eid.vertexId).mirrors.map(m =>
-        new EntityId(VertexEntityType.Mirror.toString(), m.id, m.partition.id)
-      )
-      // TODO Pass partitionInDegree to all vertices being created
-      val nInEdges = inEdgePartition(eid.partitionId)(eid.vertexId)
-//      println("eid main, ", eid.partitionId, eid.vertexId, nInEdges)
-      totalMainsInitialized =
-        blockInitMain(mainERef, eid, neighbors, mirrors, nInEdges, totalMainsInitialized)
-      for (m <- mirrors) {
-        val mirrorERef: EntityRef[VertexEntity.Command] =
-          sharding.entityRefFor(VertexEntity.TypeKey, m.toString)
-        // TODO Need to add neighbours 
-        val neighbors = ArrayBuffer[EntityId]()
-        val nInEdges = inEdgePartition(m.partitionId)(m.vertexId)
-//        println("eid mirror, ", m.partitionId, m.vertexId, nInEdges)
-
-        totalMirrorsInitialized = blockInitMirror(mirrorERef, m, eid, neighbors, nInEdges, totalMirrorsInitialized)
-      }
-    }
-  }
-
-  // Tell non-parameter vertex command to a vertex.
-  // If the vertex is a main, tell the command to all its mirrors.
-  def tellMainAndMirrors(cmd: VertexEntity.Command, eid: EntityId): Unit = {
-    val entityRef: EntityRef[VertexEntity.Command] =
-      sharding.entityRefFor(VertexEntity.TypeKey, eid.toString)
-    entityRef ! cmd
-    if (isMain(eid)) {
-      val mirrors = mainArray(eid.vertexId).mirrors.map(m =>
-        new EntityId(VertexEntityType.Mirror.toString(), m.id, m.partition.id)
-      )
-      val mirrorEntityRefs =
-        mirrors.map(mid => sharding.entityRefFor(VertexEntity.TypeKey, mid.toString))
-      for (eRef <- mirrorEntityRefs) eRef ! cmd
-    }
-  }
-
-  def isMain(eid: EntityId): Boolean = {
-    eid.vertexId % partitionMap.size == eid.partitionId
-  }
 }
 
 object EntityManager {
 
   def apply(
       partitionMap: collection.mutable.Map[Int, Int],
-      mainArray: Array[Main],
       pid: Int,
-      inEdgePartition: Array[collection.mutable.Map[Int, Int]]
+      mains: Array[(Int, Set[Int], List[(Int, Int, Int)], Int)],
+      mirrors: Array[(Int, Int, List[(Int, Int, Int)], Int)]
   ): Behavior[EntityManager.Command] = Behaviors.setup(ctx => {
     val EntityManagerKey =
       ServiceKey[EntityManager.Command](s"entityManager${pid}")
     ctx.system.receptionist ! Receptionist.Register(EntityManagerKey, ctx.self)
-    new EntityManager(ctx, partitionMap, mainArray, pid, inEdgePartition)
+    new EntityManager(
+      ctx,
+      partitionMap,
+      pid,
+      mains,
+      mirrors
+    )
   })
   // command/response typedef
   sealed trait Command extends CborSerializable
   sealed trait Response extends CborSerializable
 
   // Sync Main/Mirror Initialization
+  final case object InitializeMains extends Command
+  final case object InitializeMirrors extends Command
+
   final case class Initialize(
       entityClass: String,
       vertexId: Int,

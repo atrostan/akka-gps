@@ -37,7 +37,7 @@ class Mirror(val id: Int, m: Main, p: Partition) extends Actor {
 
   override def toString(): String = {
     var s: String = ""
-    s += s"Vertex ${id} Mirror on Partition ${partition.id} with main: ${main}"
+    s += s"Vertex ${id} Mirror on Partition ${partition.id}"
     s
   }
 }

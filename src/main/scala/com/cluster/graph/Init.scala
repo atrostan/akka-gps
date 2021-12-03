@@ -6,7 +6,7 @@ import akka.actor.typed.{ActorRef, ActorRefResolver, ActorSystem, Scheduler}
 import akka.cluster.ClusterEvent
 import akka.cluster.sharding.typed.scaladsl.EntityRef
 import akka.util.Timeout
-import com.Typedefs.{GCRef, PCRef}
+import com.Typedefs.{EMRef, GCRef, PCRef}
 import com.cluster.graph
 import com.cluster.graph.GlobalCoordinator.GlobalCoordinatorKey
 import com.cluster.graph.entity.{EntityId, MainEntity, MirrorEntity, VertexEntity}
@@ -113,12 +113,13 @@ object Init {
   }
 
   def getNMainsInitialized(
-      entityManager: ActorSystem[EntityManager.Command]
+      entityManager: ActorSystem[EntityManager.Command],
+      emRef: EMRef
   ): Int = {
     // check that all mains have been correctly initialized
     implicit val scheduler = entityManager.scheduler
     val future: Future[EntityManager.NMainsInitResponse] =
-      entityManager.ask(ref => EntityManager.GetNMainsInitialized(ref))
+      emRef.ask(ref => EntityManager.GetNMainsInitialized(ref))
     val result = Await.result(future, waitTime)
     result match {
       case EntityManager.NMainsInitResponse(totalMainsInitialized) =>
@@ -130,14 +131,15 @@ object Init {
   }
 
   def getNMirrorsInitialized(
-      entityManager: ActorSystem[EntityManager.Command]
+      entityManager: ActorSystem[EntityManager.Command],
+      emRef: EMRef,
   ): Int = {
     // check that all mains have been correctly initialized
     //    entityManager ! EntityManager.GetNMainsInitialized()
 
     implicit val scheduler = entityManager.scheduler
     val future: Future[EntityManager.NMirrorsInitResponse] =
-      entityManager.ask(ref => EntityManager.GetNMirrorsInitialized(ref))
+      emRef.ask(ref => EntityManager.GetNMirrorsInitialized(ref))
     val result = Await.result(future, waitTime)
     result match {
       case EntityManager.NMirrorsInitResponse(totalMirrorsInitialized) =>
@@ -299,8 +301,8 @@ object Init {
   def blockInitMain(
       mainERef: EntityRef[VertexEntity.Initialize],
       eid: EntityId,
-      neighbors: ArrayBuffer[EntityId],
-      mirrors: ArrayBuffer[EntityId],
+      neighbors: List[(EntityId, Int)],
+      mirrors: List[EntityId],
       inDegree: Int,
       totalMainsInitialized: Int
   ): Int = {
@@ -319,6 +321,7 @@ object Init {
     val mainInitResult = Await.result(future, waitTime)
     mainInitResult match {
       case VertexEntity.InitializeResponse(_) =>
+        // println(s"initialized main ${eid.vertexId} on partition ${eid.partitionId} with neighbors ${neighbors.sortBy(n => n._1.vertexId)} and ${inDegree} incoming neighbours")
         totalMainsInitialized + 1
       case _ =>
         println(s"Failed to Initialize Main ${eid.vertexId}_${eid.partitionId}")
@@ -338,7 +341,7 @@ object Init {
       mirrorERef: EntityRef[VertexEntity.Command],
       m: EntityId,
       eid: EntityId,
-      neighbors: ArrayBuffer[EntityId],
+      neighbors: List[(EntityId, Int)],
       inDegree: Int,
       totalMirrorsInitialized: Int
   ): Int = {
@@ -356,6 +359,7 @@ object Init {
     val mirrorInitResult = Await.result(future, waitTime)
     mirrorInitResult match {
       case VertexEntity.InitializeResponse(_) =>
+        // println(s"initialized mirror ${m.vertexId} on partition ${m.partitionId} with neighbors ${neighbors.sortBy(n => n._1.vertexId)} and ${inDegree} incoming neighbours")
         totalMirrorsInitialized + 1
       case _ =>
         println(s"Failed to Initialize Main ${eid.vertexId}_${eid.partitionId}")

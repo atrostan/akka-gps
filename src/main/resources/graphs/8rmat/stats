@@ -1,0 +1,9 @@
+Dataset statistics
+Nodes	8
+Edges	32
+
+# Generated using:
+import snap
+Rnd = snap.TRnd()
+Graph = snap.GenRMat(8, 32, .57, .19, .19, Rnd)
+Graph.SaveEdgeList('8rmat')

@@ -40,7 +40,7 @@ class MirrorEntity(
       case VertexEntity.InitializeMirror(vid, pid, m, neighs, inDeg, replyTo) =>
         vertexId = vid
         partitionId = pid.toShort
-        neighbors = neighs
+        neighbors ++= neighs
         main = m
         partitionInDegree = inDeg
         thisVertexInfo = VertexInfo(vertexId, neighbors.size)
