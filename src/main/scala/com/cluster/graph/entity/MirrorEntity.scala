@@ -64,6 +64,12 @@ class MirrorEntity(
       case ApplyResult(stepNum, oldVal, newVal) => {
         ctxLog("Received apply value from Main " + newVal)
         localScatter(stepNum, oldVal, newVal, sharding)
+        // If no incoming edges, then need to send a message to Main for the next superstep
+        if(this.partitionInDegree == 0) {
+          val cmd = MirrorTotal(stepNum + 1, None)
+          val mainRef = sharding.entityRefFor(VertexEntity.TypeKey, main.toString())
+          mainRef ! cmd
+        }
         Behaviors.same
       }
 

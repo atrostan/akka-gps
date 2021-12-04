@@ -24,7 +24,7 @@ object VertexEntity {
   type AccumulatorT = Set[Int]
 //  type AccumulatorT = Int
 
-  type VertexValT = Option[Colour]
+  type VertexValT = Colour
 //  type VertexValT = Int
 
   type SuperStep = Int
