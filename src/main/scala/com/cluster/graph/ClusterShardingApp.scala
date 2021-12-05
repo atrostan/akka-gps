@@ -27,6 +27,7 @@ import scala.collection.immutable.TreeMap
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
+import com.cluster.graph.entity.VertexEntity
 
 object ClusterShardingApp {
 
@@ -209,7 +210,7 @@ object ClusterShardingApp {
 
     // Wait until finished
 
-    type FinalValueType = Option[Colour]
+    type FinalValueType = VertexEntity.VertexValT
 //    type FinalValueType = Int
 
     var finalVals: Map[Int, FinalValueType] = null

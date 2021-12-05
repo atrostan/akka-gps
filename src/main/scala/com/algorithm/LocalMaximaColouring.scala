@@ -1,10 +1,10 @@
 package com.algorithm
 
 case class Colour(num: Int) {
-  require(num >= 0)
+  require(num >= -1)
 }
 
-trait LocalMaximalColouringAbstractMode extends VertexProgram[Int, Int, Set[Int], Option[Colour]] {
+trait LocalMaximalColouringAbstractMode extends VertexProgram[Int, Int, Set[Int], Colour] {
   override def gather(edgeVal: Int, message: Int): Set[Int] = Set(message)
 
   override def sum(a: Set[Int], b: Set[Int]): Set[Int] = a.union(b)
@@ -12,30 +12,30 @@ trait LocalMaximalColouringAbstractMode extends VertexProgram[Int, Int, Set[Int]
   override def apply(
       superStepNumber: Int,
       thisVertex: VertexInfo,
-      oldVal: Option[Colour],
+      oldVal: Colour,
       total: Option[Set[Int]]
-  ): Option[Colour] = {
+  ): Colour = {
     if (superStepNumber == 0) {
-      None
+      Colour(-1)
     } else {
       oldVal match {
-        case Some(colour) => oldVal
-        case None => {
+        case Colour(-1) => {
           total match {
             case None => {
               // Colour myself with superstep number
-              Some(Colour(superStepNumber - 1))
+              Colour(superStepNumber - 1)
             }
             case Some(idSet) => {
               if (idSet.max < thisVertex.id) {
                 // Colour myself with superstep number
-                Some(Colour(superStepNumber - 1))
+                Colour(superStepNumber - 1)
               } else {
-                None
+                Colour(-1)
               }
             }
           }
         }
+        case c => c
       }
     }
   }
@@ -43,23 +43,23 @@ trait LocalMaximalColouringAbstractMode extends VertexProgram[Int, Int, Set[Int]
   override def scatter(
       superStepNumber: Int, 
       thisVertex: VertexInfo,
-      oldVal: Option[Colour],
-      newVal: Option[Colour]
+      oldVal: Colour,
+      newVal: Colour
   ): Option[Int] = {
     newVal match {
-      case None         => Some(thisVertex.id)
-      case Some(colour) => None
+      case Colour(-1) => Some(thisVertex.id)
+      case c          => None
     }
   }
 
-  override def voteToHalt(superStepNumber: Int, oldVal: Option[Colour], newVal: Option[Colour]): Boolean = {
+  override def voteToHalt(superStepNumber: Int, oldVal: Colour, newVal: Colour): Boolean = {
     newVal match {
-      case None         => false
-      case Some(colour) => true
+      case Colour(-1) => false
+      case c          => true
     }
   }
 
-  override val defaultVertexValue: Option[Colour] = None
+  override val defaultVertexValue: Colour = Colour(-1)
 
   override val defaultActivationStatus: Boolean = true
 }
