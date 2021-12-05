@@ -9,7 +9,7 @@ import scala.concurrent.Future
 
 //https://github.com/haghard/safe-chat/blob/1a961ccb228c3a2ceb63b86ff79a327256040201/src/main/scala/com/safechat/actors/DynamicLeastShardAllocationStrategy.scala
 class MyShardAllocationStrategy(
-    partitionMap: collection.mutable.Map[Int, Int]
+    partitionMap: collection.mutable.Map[Int, String]
 ) extends ShardAllocationStrategy
     with Serializable {
 

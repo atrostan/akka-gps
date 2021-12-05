@@ -30,7 +30,7 @@ import scala.concurrent.{Await, Future}
 
 object ClusterShardingApp {
 
-  val partitionMap = collection.mutable.Map[Int, Int]()
+  val partitionMap = collection.mutable.Map[Int, String]()
   val partCoordMap = collection.mutable.Map[Int, Int]()
   val numberOfShards = ConfigFactory
     .load("cluster")
@@ -75,6 +75,8 @@ object ClusterShardingApp {
     val workerMap: Map[Int, String] = readWorkerPathsFromYaml(workerPaths: String)
 
     val config = ConfigFactory.load("cluster")
+
+    config.getConfig("akka.partitions")
     println(config.getConfig("ec2"))
     val nodesUp = collection.mutable.Set[Member]()
 
@@ -105,7 +107,7 @@ object ClusterShardingApp {
       val shardConfig = createConfig("shard", shardPort)
       val pcConfig = createConfig("partitionCoordinator", pcPort)
 
-      partitionMap(pid) = shardPort
+      partitionMap(pid) = shardPort.toString
       partCoordMap(pid) = pcPort
 
       val entityManager = ActorSystem[EntityManager.Command](

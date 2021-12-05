@@ -13,6 +13,7 @@ import com.cluster.graph.entity.{EntityId, MainEntity, MirrorEntity, VertexEntit
 import com.graph.{Edge, Vertex}
 import com.preprocessing.partitioning.oneDim.Partitioning
 
+import java.io.{FileOutputStream, PrintStream}
 import java.nio.charset.StandardCharsets
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration._
@@ -62,7 +63,28 @@ object Init {
 
     val vs = ArrayBuffer(v0, v1, v2, v3, v4)
 
-    val es = ArrayBuffer(e0, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19)
+    val es = ArrayBuffer(
+      e0,
+      e1,
+      e2,
+      e3,
+      e4,
+      e5,
+      e6,
+      e7,
+      e8,
+      e9,
+      e10,
+      e11,
+      e12,
+      e13,
+      e14,
+      e15,
+      e16,
+      e17,
+      e18,
+      e19
+    )
     // create partitioning data structure
     val png = Partitioning(nPartitions, es, nNodes, nEdges)
     println("Partitioning result:")
@@ -132,7 +154,7 @@ object Init {
 
   def getNMirrorsInitialized(
       entityManager: ActorSystem[EntityManager.Command],
-      emRef: EMRef,
+      emRef: EMRef
   ): Int = {
     // check that all mains have been correctly initialized
     //    entityManager ! EntityManager.GetNMainsInitialized()
@@ -234,16 +256,19 @@ object Init {
 //    gcRef
 //  }
 
-  /**
-   * Block execution of akka-gps until nToRegister members of type T registered with service key
-   * ServiceKey[T](s"$idStr$pid") have been registered by the cluster receptionist
-   *
-   * @param entityManager the ActorSystem that communicates with the receptionist
-   * @param idStr the name of service key id that is registered with the receptionist
-   * @param nToRegister the number of expected registered service keys
-   * @tparam T either {EntityManager, PartitionCoordinator, GlobalCoordinator}.Command
-   * @return
-   */
+  /** Block execution of akka-gps until nToRegister members of type T registered with service key
+    * ServiceKey[T](s"$idStr$pid") have been registered by the cluster receptionist
+    *
+    * @param entityManager
+    *   the ActorSystem that communicates with the receptionist
+    * @param idStr
+    *   the name of service key id that is registered with the receptionist
+    * @param nToRegister
+    *   the number of expected registered service keys
+    * @tparam T
+    *   either {EntityManager, PartitionCoordinator, GlobalCoordinator}.Command
+    * @return
+    */
   def blockUntilAllRefsRegistered[T: ClassTag](
       entityManager: ActorSystem[EntityManager.Command],
       idStr: String,
@@ -260,10 +285,13 @@ object Init {
       for (pid <- 0 until nToRegister) {
 
         var serviceKey: ServiceKey[T] = null
+        var textLogFile: String = ""
         if (nToRegister == 1) {
           serviceKey = ServiceKey[T](s"$idStr")
+          textLogFile = s"$idStr"
         } else {
           serviceKey = ServiceKey[T](s"$idStr$pid")
+          textLogFile = s"$idStr$pid"
         }
 
         val f: Future[EntityManager.RefResponseFromReceptionist] = entityManager.ask(ref => {
@@ -274,6 +302,7 @@ object Init {
         RefResponseFromReceptionist match {
           case EntityManager.RefResponseFromReceptionist(listing) =>
             val set = listing.serviceInstances(serviceKey)
+            println(s"got this set: ${set}")
             // the ref for this pid has been registered
             if (set.size == 1) {
               nRegistered += 1
@@ -333,9 +362,12 @@ object Init {
     * initialized
     *
     * @param mirrorERef
-    * @param m Entity id of the mirror vertex
-    * @param eid Entity id of its main vertex
-    * @param neighbors List of neighbours
+    * @param m
+    *   Entity id of the mirror vertex
+    * @param eid
+    *   Entity id of its main vertex
+    * @param neighbors
+    *   List of neighbours
     */
   def blockInitMirror(
       mirrorERef: EntityRef[VertexEntity.Command],

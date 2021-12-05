@@ -1,22 +1,43 @@
 package com.preprocessing.partitioning
 
+import akka.serialization.Serialization
 import com.Typedefs._
+import com.preprocessing.aggregation.Serialization.{Main, writeMainArray, writeMirrorArray}
 import org.apache.commons.io.FileUtils.{cleanDirectory, deleteDirectory}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.types._
-import org.apache.spark.sql.{Row, SparkSession}
+import org.apache.spark.sql.{Dataset, Row, SparkSession}
 import org.apache.spark.{Partitioner, SparkContext}
 import org.yaml.snakeyaml.Yaml
 
-import java.io.{File, FileInputStream}
+import java.io.{DataInput, DataOutput, File, FileInputStream, FileNotFoundException, FileOutputStream, IOException, ObjectOutputStream, OutputStream}
 import java.nio.file.Files.createDirectories
 import java.nio.file.{Files, Path, Paths}
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.FileSystem
+import org.apache.hadoop.fs.{Path => HDFSPath}
+import org.apache.hadoop.io.{ArrayWritable, Writable}
 
 object Util {
+
+  def listFolderNamesInFolder(hdfsPath: String): List[String] =
+    FileSystem
+      .get(new Configuration())
+      .listStatus(new HDFSPath(hdfsPath))
+      .flatMap(status => if (!status.isFile) Some(status.getPath.getName) else None)
+      .toList
+
+  def moveFile(oldPath: String, newPath: String): Unit = {
+    val fileSystem = FileSystem.get(new Configuration())
+    fileSystem.rename(new HDFSPath(oldPath), new HDFSPath(newPath))
+  }
+
+  def createFolder(hdfsPath: String): Unit =
+    FileSystem.get(new Configuration()).mkdirs(new HDFSPath(hdfsPath))
 
   val weightedSchema = StructType(
     List(
@@ -330,9 +351,9 @@ object Util {
   def partitionMainsDF(
       mains: RDD[TaggedMainRow],
       spark: SparkSession,
-      partitionMap: Map[Int, String]
+      partitionMap: Map[Int, String],
+      fs: FileSystem
   ): Unit = {
-
     val rowRDD = mains.map {
       case (
             (vid: Int, pid: Int),
@@ -351,15 +372,18 @@ object Util {
     val df = spark.createDataFrame(rowRDD, mainRowSchema)
     for ((pid, path) <- partitionMap) {
       println(s"writing mains to ${path}/mains")
+      createFolder(path)
       val partition = df.filter(s"partitionId == ${pid}")
-      partition.write.mode("overwrite").parquet(path + "/mains")
+//      partition.write.mode("overwrite").parquet(path + "/mains")
+      writeMainArray(partition, path + "/mains", fs)
     }
   }
 
   def partitionMirrorsDF(
       mirrors: RDD[TaggedMirrorRow],
       spark: SparkSession,
-      partitionMap: Map[Int, String]
+      partitionMap: Map[Int, String],
+      fs: FileSystem
   ): Unit = {
     val rowRDD = mirrors.map {
       case (
@@ -380,7 +404,8 @@ object Util {
     for ((pid, path) <- partitionMap) {
       println(s"writing mirrors to ${path}/mirrors")
       val partition = df.filter(s"partitionId == ${pid}")
-      partition.write.mode("overwrite").parquet(path + "/mirrors")
+//      partition.write.mode("overwrite").parquet(path + "/mirrors")
+      writeMirrorArray(partition, path + "/mirrors")
     }
   }
 
@@ -434,8 +459,18 @@ object Util {
         StructField("partitionInDegree", IntegerType, false)
       )
     )
-
+    println("made schema")
     val rowRDD = spark.read.schema(partitionedMainRowSchema).parquet(path).rdd
+    rowRDD.foreach {
+      case Row(
+            vid: Int,
+            pidsWithMirrors: mutable.WrappedArray[Int],
+            neighs: mutable.WrappedArray[Int],
+            partitionInDegree: Int
+          ) =>
+        println(vid, pidsWithMirrors, neighs, partitionInDegree)
+    }
+    println("made rowRDD; mapping, and returning")
     rowRDD.map {
       case Row(
             vid: Int,
@@ -688,8 +723,6 @@ object Util {
       }
       .map(t => ((t._1, t._2), t._3))
 
-
-
     vertexMainAndMirrors
       .cache() // cache the mains in memory so that their correct location can be propagated to their mirrors
     val mirrors = vertexMainAndMirrors.flatMap { case ((vid: Int, _), mirrorPids: Set[Int]) =>
@@ -743,13 +776,12 @@ object Util {
     pMap.toMap
   }
 
-  /** Tag each edge in the graph using the following definitions: Each edge is assigned to a partition
-    * in the partitioning step. Also, the main assignment step assigned each vertex as a main
-    * vertex to some partition. In the following, an edge is between source id -> destination id:
-    * if an edge is between main -> main, label that edge as 0
-    * if an edge is between main -> mirror, label that edge as 1
-    * if an edge is between mirror -> main, label that edge as 2
-    * if an edge is between mirror -> mirror, label that edge as 3
+  /** Tag each edge in the graph using the following definitions: Each edge is assigned to a
+    * partition in the partitioning step. Also, the main assignment step assigned each vertex as a
+    * main vertex to some partition. In the following, an edge is between source id -> destination
+    * id: if an edge is between main -> main, label that edge as 0 if an edge is between main ->
+    * mirror, label that edge as 1 if an edge is between mirror -> main, label that edge as 2 if an
+    * edge is between mirror -> mirror, label that edge as 3
     * @param mains
     * @param edgeList
     * @return

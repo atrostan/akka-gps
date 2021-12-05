@@ -23,7 +23,7 @@ import scala.concurrent.duration._
 
 class EntityManager(
     ctx: ActorContext[EntityManager.Command],
-    partitionMap: collection.mutable.Map[Int, Int],
+    partitionMap: collection.mutable.Map[Int, String],
     pid: Int,
     mains: Array[(Int, Set[Int], List[(Int, Int, Int)], Int)],
     mirrors: Array[(Int, Int, List[(Int, Int, Int)], Int)]
@@ -178,7 +178,7 @@ class EntityManager(
 object EntityManager {
 
   def apply(
-      partitionMap: collection.mutable.Map[Int, Int],
+      partitionMap: collection.mutable.Map[Int, String],
       pid: Int,
       mains: Array[(Int, Set[Int], List[(Int, Int, Int)], Int)],
       mirrors: Array[(Int, Int, List[(Int, Int, Int)], Int)]
