@@ -9,10 +9,13 @@ object Colour {
 
 object LocalMaximalColouring extends VertexProgram[Int, Int, Int, Colour] {
   
+  // Map messages into accumulator values
   override def gather(edgeVal: Int, message: Int): Int = message
 
+  // Combine accumulator values
   override def sum(a: Int, b: Int): Int = Math.max(a, b)
 
+  // Compute new local state for this vertex based on accumulated sum
   override def apply(superStepNumber: Int, thisVertex: VertexInfo, oldVal: Colour, total: Option[Int]): Colour = {
     // At start, always colour yourself blank
     if (superStepNumber == 0) Colour.Blank
@@ -24,18 +27,23 @@ object LocalMaximalColouring extends VertexProgram[Int, Int, Int, Colour] {
     else Colour.Blank
   }
 
+  // Optionally generate a message to send to neighbours
   override def scatter(superStepNumber: Int, thisVertex: VertexInfo, oldVal: Colour, newVal: Colour): Option[Int] = {
     if (newVal == Colour.Blank) Some(thisVertex.id)
     else None
   }
 
+  // Whether to deactivate this vertex at the end of this superstep
   override def deactivateSelf(superStepNumber: Int, oldVal: Colour, newVal: Colour): Boolean = (newVal != Colour.Blank)
 
-  override val defaultVertexValue: Colour = Colour(-1)
+  // Initial starting state
+  override val defaultVertexValue: Colour = Colour.Blank
 
+  // Initial starting activation status
   override val defaultActivationStatus: Boolean = true
 
-  override val mode = VertexProgram.Outwards
+  // Whether messages are sent along out-edges, in-edges, or both
+  override val mode = VertexProgram.Bidirectional
 }
 
 // object LocalMaximaColouring extends LocalMaximalColouringAbstractMode {
