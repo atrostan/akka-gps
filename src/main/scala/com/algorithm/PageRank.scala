@@ -31,7 +31,7 @@ class PageRank(iters: Int) extends VertexProgram[Int, Double, Double, Double] {
     }
   }
 
-  override def voteToHalt(superStepNumber: Int, oldVal: Double, newVal: Double): Boolean = {
+  override def deactivateSelf(superStepNumber: Int, oldVal: Double, newVal: Double): Boolean = {
     superStepNumber >= iters
   }
   

@@ -37,7 +37,7 @@ object SSSP extends VertexProgram[Int, Int, Int, Int] {
     }
   }
 
-  override def voteToHalt(superStepNumber: Int, oldVal: Int, newVal: Int): Boolean = true
+  override def deactivateSelf(superStepNumber: Int, oldVal: Int, newVal: Int): Boolean = true
 
   override val defaultActivationStatus: Boolean = true
 

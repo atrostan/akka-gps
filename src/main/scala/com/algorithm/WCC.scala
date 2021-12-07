@@ -35,7 +35,7 @@ object WCC extends VertexProgram[Int, Int, Int, Int] {
     }
   }
 
-  override def voteToHalt(superStepNumber: Int, oldVal: Int, newVal: Int): Boolean = true
+  override def deactivateSelf(superStepNumber: Int, oldVal: Int, newVal: Int): Boolean = true
 
   override val defaultVertexValue: Int = Integer.MAX_VALUE
 

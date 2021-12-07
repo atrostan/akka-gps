@@ -19,26 +19,6 @@ class SequentialTest extends FunSuite with Matchers {
       2 ~> 3 % 1,
       3 ~> 4 % 6
     )
-    val states = ListMap(
-      g.Node(0) -> Integer.MAX_VALUE,
-      g.Node(1) -> Integer.MAX_VALUE,
-      g.Node(2) -> Integer.MAX_VALUE,
-      g.Node(3) -> Integer.MAX_VALUE,
-      g.Node(4) -> Integer.MAX_VALUE,
-      g.Node(5) -> Integer.MAX_VALUE,
-      g.Node(6) -> Integer.MAX_VALUE,
-      g.Node(7) -> Integer.MAX_VALUE
-    )
-    val activeMap = Map(
-      g.Node(0) -> true,
-      g.Node(1) -> true,
-      g.Node(2) -> true,
-      g.Node(3) -> true,
-      g.Node(4) -> true,
-      g.Node(5) -> true,
-      g.Node(6) -> true,
-      g.Node(7) -> true
-    )
     val distances = Map(
       g.Node(0) -> 0,
       g.Node(1) -> 2,
@@ -64,26 +44,6 @@ class SequentialTest extends FunSuite with Matchers {
       6 ~> 5 % 600,
       6 ~> 7 % 1000,
       7 ~> 2 % 1000
-    )
-    val states = ListMap(
-      g.Node(0) -> Integer.MAX_VALUE,
-      g.Node(1) -> Integer.MAX_VALUE,
-      g.Node(2) -> Integer.MAX_VALUE,
-      g.Node(3) -> Integer.MAX_VALUE,
-      g.Node(4) -> Integer.MAX_VALUE,
-      g.Node(5) -> Integer.MAX_VALUE,
-      g.Node(6) -> Integer.MAX_VALUE,
-      g.Node(7) -> Integer.MAX_VALUE
-    )
-    val activeMap = Map(
-      g.Node(0) -> true,
-      g.Node(1) -> true,
-      g.Node(2) -> true,
-      g.Node(3) -> true,
-      g.Node(4) -> true,
-      g.Node(5) -> true,
-      g.Node(6) -> true,
-      g.Node(7) -> true
     )
     val distances = ListMap(
       g.Node(0) -> 0,
@@ -114,56 +74,36 @@ class SequentialTest extends FunSuite with Matchers {
       4 ~> 3 % 1,
       5 ~> 3 % 1
     )
-    val states = Map(
-      g.Node(0) -> Some(Colour(0)),
-      g.Node(1) -> Some(Colour(0)),
-      g.Node(2) -> Some(Colour(0)),
-      g.Node(3) -> Some(Colour(0)),
-      g.Node(4) -> Some(Colour(0)),
-      g.Node(5) -> Some(Colour(0)),
-      g.Node(6) -> Some(Colour(0)),
-      g.Node(7) -> Some(Colour(0))
-    )
-    val activeMap = Map(
-      g.Node(0) -> true,
-      g.Node(1) -> true,
-      g.Node(2) -> true,
-      g.Node(3) -> true,
-      g.Node(4) -> true,
-      g.Node(5) -> true,
-      g.Node(6) -> true,
-      g.Node(7) -> true
-    )
     val finalColours = ListMap(
-      g.Node(1) -> Some(Colour(3)),
-      g.Node(2) -> Some(Colour(2)),
-      g.Node(3) -> Some(Colour(1)),
-      g.Node(4) -> Some(Colour(0)),
-      g.Node(5) -> Some(Colour(0))
+      g.Node(1) -> Colour(3),
+      g.Node(2) -> Colour(2),
+      g.Node(3) -> Colour(1),
+      g.Node(4) -> Colour(0),
+      g.Node(5) -> Colour(0)
     )
     val results = SequentialRun(LocalMaximaColouring, g)
     results should be(finalColours)
   }
 
-  test("Local Maxima Colouring - Bidirectional") {
-    val g: Graph[Int, WDiEdge] = Graph(
-      1~>2 % 1,
-      2~>3 % 1,
-      2~>4 % 1,
-      3~>1 % 1,
-      3~>4 % 1,
-      5~>3 % 1,
-    )
-    val finalColours = ListMap(
-      g.Node(1) -> Some(Colour(3)),
-      g.Node(2) -> Some(Colour(2)),
-      g.Node(3) -> Some(Colour(1)),
-      g.Node(4) -> Some(Colour(0)),
-      g.Node(5) -> Some(Colour(0)),
-    )
-    val results = SequentialRun(LocalMaximaColouringBidirectional, g)
-    results should be (finalColours)
-  }
+  // test("Local Maxima Colouring - Bidirectional") {
+  //   val g: Graph[Int, WDiEdge] = Graph(
+  //     1~>2 % 1,
+  //     2~>3 % 1,
+  //     2~>4 % 1,
+  //     3~>1 % 1,
+  //     3~>4 % 1,
+  //     5~>3 % 1,
+  //   )
+  //   val finalColours = ListMap(
+  //     g.Node(1) -> Colour(3),
+  //     g.Node(2) -> Colour(2),
+  //     g.Node(3) -> Colour(1),
+  //     g.Node(4) -> Colour(0),
+  //     g.Node(5) -> Colour(0),
+  //   )
+  //   val results = SequentialRun(LocalMaximaColouringBidirectional, g)
+  //   results should be (finalColours)
+  // }
 
   test("WCC") {
     val g: Graph[Int, WDiEdge] = Graph(

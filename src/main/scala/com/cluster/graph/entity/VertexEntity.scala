@@ -21,7 +21,7 @@ object VertexEntity {
   type EdgeValT = Int
   type MessageT = Int
 
-  type AccumulatorT = Set[Int]
+  type AccumulatorT = Int
 //  type AccumulatorT = Int
 
   type VertexValT = Colour
