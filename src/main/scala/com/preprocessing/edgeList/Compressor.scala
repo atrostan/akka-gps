@@ -1,8 +1,8 @@
 package com.preprocessing.edgeList
 
 import com.Typedefs.EitherEdgeRDD
-import com.preprocessing.partitioning.Util.persist
 import org.apache.spark.rdd.RDD
+import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK
 
 class Compressor(edgeList: EitherEdgeRDD) {
 
@@ -39,7 +39,8 @@ class Compressor(edgeList: EitherEdgeRDD) {
   def compressRdd(rdd: RDD[(Long, (Int, Int))]): RDD[(Long, (Int, Int))] = {
     // get source ids
 
-    rdd.cache()
+    println("Caching the indexed edgelist to MEMORY_AND_DISK")
+    rdd.persist(MEMORY_AND_DISK)
 
     val sources: RDD[Int] = rdd
       .map(row => row._2._1)
@@ -62,7 +63,8 @@ class Compressor(edgeList: EitherEdgeRDD) {
     val vertexMap = sourceMap.union(unseenDestinations)
     nNodes = vertexMap.count()
     println(s"Number of nodes in compressed representation: ${nNodes}")
-    vertexMap.cache()
+    println("Caching the compressed graph's vertex isomorphism map to MEMORY_AND_DISK")
+    vertexMap.persist(MEMORY_AND_DISK)
     // debug
 //    persist(vertexMap, "src/main/resources/graphs/email-Eu-core/map", 1)
 

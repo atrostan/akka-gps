@@ -1,8 +1,6 @@
 package com.cluster.graph
 
-import akka.actor.typed.scaladsl.Behaviors
-import akka.actor.typed.scaladsl.LoggerOps
-import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
+import akka.actor.typed.ActorSystem
 import akka.cluster.{ClusterEvent, Member}
 import akka.util.Timeout
 import com.typesafe.config.{Config, ConfigFactory}
@@ -11,31 +9,21 @@ import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 import akka.actor.typed.scaladsl.AskPattern.Askable
 import com.Typedefs.{EMRef, GCRef, PCRef}
-import com.cluster.graph.ClusterShardingApp.createConfig
 import com.cluster.graph.EntityManager.{InitializeMains, InitializeMirrors}
-import com.cluster.graph.Init.{
-  blockUntilAllRefsRegistered,
-  broadcastGCtoPCs,
-  getNMainsAckd,
-  getNMainsInitialized,
-  getNMirrorsInitialized
-}
+import com.cluster.graph.GlobalCoordinator.{FinalValuesResponseComplete, FinalValuesResponseNotFinished}
+import com.cluster.graph.Init.{blockInitGlobalCoordinator, blockUntilAllRefsRegistered, broadcastGCtoPCs, getNMainsAckd, getNMainsInitialized, getNMirrorsInitialized, readEdgelistForVerification}
 import com.cluster.graph.PartitionCoordinator.BroadcastLocation
-import com.preprocessing.aggregation.HDFSUtil.getHDFSfs
-import com.preprocessing.aggregation.Serialization.{
-  Main,
-  Mirror,
-  readMainTextFile,
-  readMirrorTextFile,
-  readObjectArray
-}
-import com.preprocessing.partitioning.Util.{readMainPartitionDF, readMirrorPartitionDF}
+import com.cluster.graph.entity.VertexEntity
+import com.preprocessing.aggregation.Serialization.{readDegTextFile, readMainTextFile, readMirrorTextFile}
+import com.preprocessing.partitioning.Util.readPartitionsAndJoin
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.FileSystem
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.SparkSession
 
-import java.io.{File, FileOutputStream, PrintStream}
+import java.io.{File, FileWriter}
+import java.util.Calendar
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 object DiscoveryApp {
@@ -91,7 +79,6 @@ object DiscoveryApp {
       val nMembersUpResponse = Await.result(f, waitTime)
       nMembersUpResponse match {
         case ClusterMemberEventListener.nMembersUpResponse(n) =>
-          //          println(s"$n of ${nNodes - 1} nodes are up")
           flag = n != nNodes
         case _ =>
           flag = true
@@ -129,8 +116,6 @@ object DiscoveryApp {
     sc.setLogLevel("ERROR")
     val spark: SparkSession = SparkSession.builder.config(conf).getOrCreate()
 
-//    val actorSystems =
-//      ArrayBuffer[ActorSystem[ClusterEvent.ClusterDomainEvent with EntityManager.Command]]()
     val hadoopConfig = sc.hadoopConfiguration
     hadoopConfig.set("fs.hdfs.impl", classOf[org.apache.hadoop.hdfs.DistributedFileSystem].getName)
     hadoopConfig.set("fs.file.impl", classOf[org.apache.hadoop.fs.LocalFileSystem].getName)
@@ -143,10 +128,6 @@ object DiscoveryApp {
     val (conf, sc, spark, hadoopConfig) = initSpark()
 //    val fs = getHDFSfs(hadoopConfDir)
     val fs = FileSystem.get(hadoopConfig)
-    println(fs)
-    println(s"myIp: ${myIp}")
-    println(s"partitionFolder: ${partitionFolder}")
-    println(s"confPath: ${confPath}")
 
     val config = ConfigFactory.parseFile(new File(confPath))
     val (seedNode, seedIp, partitionIps, frontIp) = parseConfigForIps(config)
@@ -154,76 +135,37 @@ object DiscoveryApp {
     val numPartitions = partitionIps.length
     val partitionMap = partitionIps.zipWithIndex.map(t => (t._2, t._1)).toMap
     val invPartitionMap = (Map() ++ partitionMap.map(_.swap))
-
     // a map between partition ids to location on hdfs of mains, mirrors for that partition
-
     val workerMap = (0 until numPartitions)
       .map(i => (i, partitionFolder + s"/p$i"))
       .toMap
     val nNodes = partitionIps.length + 2
 
-    println(s"seedNode: ${seedNode}")
-    println(s"seedIp: ${seedIp}")
-    println(s"partitionIps: ${partitionIps}")
-    println(s"frontIp: ${frontIp}")
-    println(s"nNodes: ${nNodes}")
-
     if (myIp == seedIp) {
-      println("i am domainlistener")
-
-      val nodesUp = collection.mutable.Set[Member]()
-      val domainListenerRole = "domainListener"
-      val domainListenerConfig = createConfig(domainListenerRole, canonicalPort, confPath)
-      val domainListener: ActorSystem[ClusterEvent.ClusterDomainEvent] = ActorSystem(
-        ClusterMemberEventListener(nodesUp, nNodes),
-        "ClusterSystem",
-        domainListenerConfig
-      )
-      println("Blocking until all cluster members are up...")
+      def log(s: String) = {
+        val pw = new FileWriter("./globalLog", true)
+        val currTime: String = Calendar.getInstance().getTime().toString
+        pw.write(s"[${currTime}]\t${s}\n")
+        pw.close()
+      }
+//      println("*" * 68)
+//      println(s"Domain Listener")
+//      println("*" * 68)
+//      val nodesUp = collection.mutable.Set[Member]()
+//      val domainListenerRole = "domainListener"
+//      val domainListenerConfig = createConfig(domainListenerRole, canonicalPort, confPath)
+//      val domainListener: ActorSystem[ClusterEvent.ClusterDomainEvent] = ActorSystem(
+//        ClusterMemberEventListener(nodesUp, nNodes),
+//        "ClusterSystem",
+//        domainListenerConfig
+//      )
+//      log("Blocking until all cluster members are up...")
 //      blockUntilAllMembersUp(domainListener, nNodes)
+//
 
-    } else if (partitionIps.contains(myIp)) {
-      println("this is printed to console.txt")
-      println(s"i am entitymanagger shard on ${myIp}")
-      val myPid = invPartitionMap(myIp)
-
-      val role = "shard"
-      val path = workerMap(myPid)
-
-//        val (conf, sc, spark) = initSpark()
-//        println("here's all the conf stuffx")
-//        println(conf.getAll.foreach(t => println(t._1, t._2)))
-//        val mains = readMainPartitionDF(path + "/mains", spark).collect()
-//val mirrors = readMirrorPartitionDF(path + "/mirrors", spark).collect()
-//        println(s"reading main array from path: ${path+"/mains.ser"}")
-      println(s"reading main array from path: ${path + "/mains/part-00000"}")
-      val mains = readMainTextFile(path + "/mains/part-00000", fs)
-
-      //        val mains = readObjectArray[Main](path+"/mains.ser")
-      println(s"reading mirrors array from path: ${path + "/mirrors.ser"}")
-      val mirrors = readMirrorTextFile(path + "/mirrors/part-00000", fs)
-//        val mirrors = readObjectArray[Mirror](path+"/mirrors.ser")
-      println(mains, mirrors)
-
-      mains.foreach(println)
-      mirrors.foreach(println)
-      println("did we match?")
-      val shardConfig = createConfig("shard", canonicalPort, confPath)
-      println(collection.mutable.Map(partitionMap.toSeq: _*))
-      val entityManager = ActorSystem[EntityManager.Command](
-        EntityManager(
-          collection.mutable.Map(partitionMap.toSeq: _*),
-          myPid,
-          mains,
-          mirrors
-        ),
-        "ClusterSystem",
-        shardConfig
-      )
-      println(s"registered em on ${myIp}")
-
-    } else if (myIp == frontIp) {
-      println("i am entitymanager front")
+      log("*" * 68)
+      log("Entity Manager - Front")
+      log("*" * 68)
       val role = "front"
       val cfg = createConfig(role, canonicalPort, confPath)
 
@@ -233,24 +175,21 @@ object DiscoveryApp {
           collection.mutable.Map(partitionMap.toSeq: _*),
           numPartitions,
           null,
+          null,
           null
         ),
         "ClusterSystem",
         cfg
       )
-      // can't do this in this scope, will it be an issue?
-//      println("Blocking until all cluster members are up...")
-//      blockUntilAllMembersUp(domainListener, nNodes)
 
-      println("this is printed to console.txt")
-      println("Blocking until all EntityManagers are registered...")
+      log("Blocking until all EntityManagers are registered...")
       val emRefs: collection.mutable.Map[Int, EMRef] =
         blockUntilAllRefsRegistered[EntityManager.Command](
           entityManager,
           "entityManager",
           numPartitions + 1
         )
-      println(s"Registered ${emRefs.size} EntityManagers.")
+      log(s"Registered ${emRefs.size} EntityManagers.")
       for (pid <- 0 until numPartitions) {
         val emRef: EMRef = emRefs(pid)
         emRef ! EntityManager.SpawnPC(pid)
@@ -261,9 +200,9 @@ object DiscoveryApp {
           "partitionCoordinator",
           numPartitions
         )
-      println(s"Registered ${pcRefs.size} PartitionCoordinators.")
+      log(s"Registered ${pcRefs.size} PartitionCoordinators.")
 
-      println("Blocking until the Global Coordinator is initialized and registered...")
+      log("Blocking until the Global Coordinator is registered and initialized...")
       entityManager ! EntityManager.SpawnGC()
       val gcRefs: collection.mutable.Map[Int, GCRef] =
         blockUntilAllRefsRegistered[GlobalCoordinator.Command](
@@ -272,6 +211,9 @@ object DiscoveryApp {
           1
         )
       val gcRef = gcRefs(0)
+      blockInitGlobalCoordinator(gcRef, entityManager.scheduler, pcRefs, nNodes)
+      log(s"Registered the GlobalCoordinator.")
+      log("Broadcasting the Global Coordinator address to all Partition Coordinators")
       broadcastGCtoPCs(gcRef, entityManager.scheduler)
 
       for (pid <- 0 until numPartitions) {
@@ -288,15 +230,15 @@ object DiscoveryApp {
         nMainsInitialized += getNMainsInitialized(entityManager, emRef)
         nMirrorsInitialized += getNMirrorsInitialized(entityManager, emRef)
       }
-      println("Checking that all Mains, Mirrors have been initialized...")
-      println(s"Total Mains Initialized: $nMainsInitialized")
-      println(s"Total Mirrors Initialized: $nMirrorsInitialized")
-//        assert(nMainsInitialized == nMains)
-//        assert(nMirrorsInitialized == nMirrors)
+      log("Checking that all Mains, Mirrors have been initialized...")
+      log(s"Total Mains Initialized: $nMainsInitialized")
+      log(s"Total Mirrors Initialized: $nMirrorsInitialized")
+      //        assert(nMainsInitialized == nMains)
+      //        assert(nMirrorsInitialized == nMirrors)
 
       // after initialization, each partition coordinator should broadcast its location to its mains
       for ((pid, pcRef) <- pcRefs) {
-        println(s"PC${pid} Broadcasting location to its main")
+        log(s"PC${pid} Broadcasting location to its mains")
         pcRef ! BroadcastLocation()
       }
       // ensure that the number of partition coordinator ref acknowledgements by main vertices equals the number of main
@@ -304,16 +246,110 @@ object DiscoveryApp {
       var totalMainsAckd = 0
       for ((pid, pcRef) <- pcRefs) {
         val nMainsAckd = getNMainsAckd(entityManager, pcRef)
-        println(s"${nMainsAckd} mains acknowledged location of PC${pid}")
+        log(s"${nMainsAckd} mains acknowledged location of PC${pid}")
         totalMainsAckd += nMainsAckd
       }
-      println(s"Total Mains Acknowledged: $totalMainsAckd")
-//        assert(totalMainsAckd == nMains)
+      log(s"Total Mains Acknowledged: $totalMainsAckd")
+      //        assert(totalMainsAckd == nMains)
+      log("Beginning global computation!")
+      val startComputation = System.nanoTime
+      gcRef ! GlobalCoordinator.BEGIN()
+      type FinalValueType = VertexEntity.VertexValT
+      //      type FinalValueType = Int
 
+      var finalVals: Map[Int, FinalValueType] = null
+      while (null == finalVals) {
+        Thread.sleep(1000)
+
+        val timeout: Timeout = 5.seconds
+        val sched = entityManager.scheduler
+        val future: Future[GlobalCoordinator.FinalValuesResponse] =
+          gcRef.ask(ref => GlobalCoordinator.GetFinalValues(ref))(timeout, sched)
+        Await.result(future, Duration.Inf) match {
+          case FinalValuesResponseComplete(valueMap) =>
+
+            finalVals = valueMap
+          case FinalValuesResponseNotFinished => ()
+        }
+      }
+      val computationDuration = (System.nanoTime - startComputation) / 1e9d
+      log(s"vertex program took: ${computationDuration}")
+      log("Final values:")
+      finalVals.foreach(v => log(v.toString()))
+//
+      log("checking colouring correctness...")
+      def checkColouringCorrectness(coloring: Map[Int, FinalValueType]) = {
+        log("Reading the original Edgelist for verification purposes...")
+
+        val pth = "/home/ec2-user/part-00000"
+        val edgeList = readEdgelistForVerification(pth)
+        val adjList = collection.mutable.TreeMap[Int, collection.mutable.ArrayBuffer[Int]]()
+        for (e <- edgeList) {
+          val src = e._1
+          val dest = e._2
+          if (!adjList.contains(src)) {
+            adjList(src) = ArrayBuffer[Int]() += dest
+          } else {
+            adjList(src) += dest
+          }
+        }
+
+        val nNodes = adjList.size
+        for (src <- 0 until nNodes) {
+          val srcColor = coloring(src)
+          for (dest <- adjList(src)) {
+            val destColor = coloring(dest)
+            if (srcColor == destColor) {
+              log(s"${src} and ${dest} have the same colour: ${srcColor}")
+            }
+          }
+        }
+        log("Colouring Valid!")
+        //        sc.stop()
+      }
+      checkColouringCorrectness(finalVals)
+//      exportFinalVals(finalVals)
+
+    } else if (partitionIps.contains(myIp)) {
+      def log(s: String) = {
+        val pw = new FileWriter("./execLog", true)
+        val currTime: String = Calendar.getInstance().getTime().toString
+        pw.write(s"[${currTime}]\t${s}\n")
+        pw.close()
+      }
+      val myPid = invPartitionMap(myIp)
+      log("*" * 68)
+      log(s"Entity Manager - Partition ${myPid}")
+      log("*" * 68)
+      val path = workerMap(myPid)
+
+      log(s"reading main array from path: " + path + "/mains/part-00000")
+      val mains = readMainTextFile(path + "/mains/part-00000", fs)
+      log(s"reading mirrors array from path:" + path + "/mirrors/part-00000")
+      val mirrors = readMirrorTextFile(path + "/mirrors/part-00000", fs)
+      log("reading outdegrees from path: " + partitionFolder + "/outdegrees/part-00000")
+      val outDegMap = readDegTextFile(partitionFolder + "/outdegrees/part-00000", fs)
+      // the vertices (mains or mirrors) present in this partition
+      val vidSet = mains.map(t => t._1).toSet.union(mirrors.map(t => t._1).toSet)
+      log(s"filtering for P${myPid}'s vidSet")
+      val outDegsOnPid = vidSet.foldLeft(Map[Int, Int]()) { (acc, x) => acc + (x -> outDegMap(x)) }
+
+      val shardConfig = createConfig("shard", canonicalPort, confPath)
+      val entityManager = ActorSystem[EntityManager.Command](
+        EntityManager(
+          collection.mutable.Map(partitionMap.toSeq: _*),
+          myPid,
+          mains,
+          mirrors,
+          outDegsOnPid
+        ),
+        "ClusterSystem",
+        shardConfig
+      )
+      log(s"Initialized EntityManager on Partition ${myPid}")
+    } else if (myIp == frontIp) {
+      println("shouldnt be here")
     }
-
-    println("seed: ", seedNode)
-    println(seedIp)
-    println("front: ", frontIp)
   }
+
 }

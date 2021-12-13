@@ -6,7 +6,7 @@ import com.preprocessing.partitioning.Util.{createPartitionDir, edgeListMatchAnd
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.{Partitioner, SparkConf, SparkContext}
 
-// runMain com.preprocessing.partitioning.Driver --nNodes 986 --nEdges 24929 --inputFilename "src/main/resources/graphs/email-Eu-core/compressed.parquet" --outputDirectoryName "src/main/resources/graphs/email-Eu-core/partitions" --sep " " --partitioner 3 --threshold 100 --numPartitions 4 --partitionBySource "false" --isWeighted "false"
+// runMain com.preprocessing.partitioning.Driver --nNodes 986 --nEdges 24929 --inputFilename "src/main/resources/graphs/email-Eu-core/compressed.parquet" --outputDirectoryName "src/main/resources/graphs/email-Eu-core/partitions" --sep " " --partitioner 1 --threshold 100 --numPartitions 4 --partitionBySource "true" --isWeighted "false"
 
 object Driver {
 
@@ -16,6 +16,7 @@ object Driver {
 
     val conf = new SparkConf()
       .setAppName(appName)
+//      .setMaster("local[*]") // uncomment to run locally
 
     val sc = new SparkContext(conf)
     sc.setLogLevel("ERROR")

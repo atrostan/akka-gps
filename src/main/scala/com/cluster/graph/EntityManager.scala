@@ -26,7 +26,8 @@ class EntityManager(
     partitionMap: collection.mutable.Map[Int, String],
     pid: Int,
     mains: Array[(Int, Set[Int], List[(Int, Int, Int)], Int)],
-    mirrors: Array[(Int, Int, List[(Int, Int, Int)], Int)]
+    mirrors: Array[(Int, Int, List[(Int, Int, Int)], Int)],
+    outDegs: Map[Int, Int]
 ) extends AbstractBehavior[EntityManager.Command](ctx) {
 
   import EntityManager._
@@ -65,48 +66,60 @@ class EntityManager(
   override def onMessage(msg: EntityManager.Command): Behavior[EntityManager.Command] = {
     msg match {
       case InitializeMains =>
-        mains.map {
-          case (vid, mirrorPids, neighs, partitionInDegree) =>
-            val eid = new EntityId(VertexEntityType.Main.toString(), vid, pid)
-            val mainERef: EntityRef[VertexEntity.Initialize] =
-              sharding.entityRefFor(VertexEntity.TypeKey, eid.toString)
-            val neighbors = neighs.map {
-              case (dest, wt, tag) =>
-                if (tag == 0) { // main -> main
-                  (new EntityId(VertexEntityType.Main.toString(), dest, pid), wt)
-                } else { // main -> mirror
-                  (new EntityId(VertexEntityType.Mirror.toString(), dest, pid), wt)
-                }
+        mains.map { case (vid, mirrorPids, neighs, partitionInDegree) =>
+          val eid = new EntityId(VertexEntityType.Main.toString(), vid, pid)
+          val mainERef: EntityRef[VertexEntity.Initialize] =
+            sharding.entityRefFor(VertexEntity.TypeKey, eid.toString)
+          val neighbors = neighs.map { case (dest, wt, tag) =>
+            if (tag == 0) { // main -> main
+              (new EntityId(VertexEntityType.Main.toString(), dest, pid), wt)
+            } else { // main -> mirror
+              (new EntityId(VertexEntityType.Mirror.toString(), dest, pid), wt)
             }
-            val mirrors = mirrorPids.map(pid =>
-              new EntityId(VertexEntityType.Mirror.toString(), vid, pid)
-            ).toList
-            totalMainsInitialized = blockInitMain(mainERef, eid, neighbors, mirrors, partitionInDegree, totalMainsInitialized)
+          }
+          val mirrors =
+            mirrorPids.map(pid => new EntityId(VertexEntityType.Mirror.toString(), vid, pid)).toList
+          totalMainsInitialized = blockInitMain(
+            mainERef,
+            eid,
+            neighbors,
+            mirrors,
+            partitionInDegree,
+            outDegs(vid),
+            totalMainsInitialized
+          )
         }
-        println(s"mains on pid ${pid}")
-        mains.foreach(x => println(pid, x))
+//        println(s"mains on pid ${pid}")
+//        mains.foreach(x => println(pid, x))
         println(s"${pid} total mains initialized: ", totalMainsInitialized)
         Behaviors.same
 
       case InitializeMirrors =>
-        mirrors.map {
-          case (vid, mainPid, neighs, partitionInDegree) =>
-            val mid = new EntityId(VertexEntityType.Main.toString(), vid, mainPid)
-            val eid = new EntityId(VertexEntityType.Mirror.toString(), vid, pid)
-            val mirrorERef: EntityRef[VertexEntity.Command] =
-              sharding.entityRefFor(VertexEntity.TypeKey, eid.toString)
-            val neighbors = neighs.map {
-              case (dest, wt, tag) =>
-                if (tag == 2) { // mirror -> main
-                  (new EntityId(VertexEntityType.Main.toString(), dest, pid), wt)
-                } else { // mirror -> mirror
-                  (new EntityId(VertexEntityType.Mirror.toString(), dest, pid), wt)
-                }
+        mirrors.map { case (vid, mainPid, neighs, partitionInDegree) =>
+          // TODO; check that main partition id is not same as my partition
+          val mid = new EntityId(VertexEntityType.Main.toString(), vid, mainPid)
+          val eid = new EntityId(VertexEntityType.Mirror.toString(), vid, pid)
+          val mirrorERef: EntityRef[VertexEntity.Command] =
+            sharding.entityRefFor(VertexEntity.TypeKey, eid.toString)
+          val neighbors = neighs.map { case (dest, wt, tag) =>
+            if (tag == 2) { // mirror -> main
+              (new EntityId(VertexEntityType.Main.toString(), dest, pid), wt)
+            } else { // mirror -> mirror
+              (new EntityId(VertexEntityType.Mirror.toString(), dest, pid), wt)
             }
-            totalMirrorsInitialized = blockInitMirror(mirrorERef, eid, mid, neighbors,  partitionInDegree, totalMirrorsInitialized)
+          }
+          totalMirrorsInitialized = blockInitMirror(
+            mirrorERef,
+            eid,
+            mid,
+            neighbors,
+            partitionInDegree,
+            outDegs(vid),
+            totalMirrorsInitialized
+          )
         }
-        println(s"mirrors on pid ${pid}")
-        mirrors.foreach(x => println(pid, x))
+//        println(s"mirrors on pid ${pid}")
+//        mirrors.foreach(x => println(pid, x))
         println(s"${pid} total mirrors initialized: ", totalMirrorsInitialized)
         Behaviors.same
 
@@ -181,7 +194,8 @@ object EntityManager {
       partitionMap: collection.mutable.Map[Int, String],
       pid: Int,
       mains: Array[(Int, Set[Int], List[(Int, Int, Int)], Int)],
-      mirrors: Array[(Int, Int, List[(Int, Int, Int)], Int)]
+      mirrors: Array[(Int, Int, List[(Int, Int, Int)], Int)],
+      outDegs: Map[Int, Int] // the outdegrees of the main+mirror vertices on this partition
   ): Behavior[EntityManager.Command] = Behaviors.setup(ctx => {
     val EntityManagerKey =
       ServiceKey[EntityManager.Command](s"entityManager${pid}")
@@ -191,7 +205,8 @@ object EntityManager {
       partitionMap,
       pid,
       mains,
-      mirrors
+      mirrors,
+      outDegs
     )
   })
   // command/response typedef

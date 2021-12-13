@@ -2,6 +2,9 @@ package com.algorithm
 
 case class Colour(num: Int) {
   require(num >= -1)
+  override def toString() = {
+    s"${num}"
+  }
 }
 
 trait LocalMaximalColouringAbstractMode extends VertexProgram[Int, Int, Set[Int], Colour] {

@@ -69,7 +69,6 @@ object Serialization {
         .filter(s => s != "")
       triples(neighsStr.map(_.trim.toInt))
     }
-
   }
 
   def parseMirrorsStr(s: String): Set[Int] = {
@@ -115,6 +114,22 @@ object Serialization {
       .trim
       .toInt
     (vid, mainPid, neighs, partitionInDegree)
+  }
+
+  def readDegTextFile(path: String, fs: FileSystem) = {
+    val p = new Path(path)
+    val stream = fs.open(p)
+    def readLines = Stream.cons(stream.readLine, Stream.continually(stream.readLine))
+    //This example checks line for null and prints every existing line
+    val degArray = readLines
+      .takeWhile(_ != null)
+      .map { line =>
+        line
+          .split(" ")
+          .map(s => s.toInt)
+
+      }.toArray
+    degArray.map(a => (a(0), a(1))).toMap
   }
 
   def readMirrorTextFile(path: String, fs: FileSystem) = {
@@ -211,7 +226,9 @@ object Serialization {
       }
       .coalesce(1)
       .saveAsTextFile(path)
-//    try {
+
+
+    //    try {
 //      val fos = new FileOutputStream(s"${path}/mirrors.ser")
 //      val oos = new ObjectOutputStream(fos)
 //      oos.writeObject(mirrorArray)

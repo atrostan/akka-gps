@@ -15,6 +15,9 @@ import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, Future}
 import com.algorithm.VertexProgram
 
+import java.io.{FileWriter, PrintWriter}
+import java.util.Calendar
+
 /** PartitionCoordinator Actor Exists on each partition of the graph, is aware of all the main
   * vertices on its partition When a main vertex completes its computation for the current
   * superstep, it notifies the PartitionCoordinator When the PartitionCoordinator has received n_i
@@ -36,6 +39,8 @@ class PartitionCoordinator(
 
   import PartitionCoordinator._
 
+
+
   val pcRef: ActorRef[PartitionCoordinator.Command] = ctx.self
   val waitTime = 10 seconds
   // In order for vertices to be able to send messages, they need to sharding.entityRefFor by entity id
@@ -54,6 +59,14 @@ class PartitionCoordinator(
   var voteCounter = collection.mutable.Map[Int, Int]().withDefaultValue(0)
 
   val finalValues = collection.mutable.Map[Int, VertexEntity.VertexValT]()
+  val heapMaxSize: Long = Runtime.getRuntime.maxMemory
+
+  def log(s: String) = {
+    val pw = new FileWriter("./execLog", true)
+    val currTime: String = Calendar.getInstance().getTime().toString
+    pw.write(s"[${currTime}]\t${s}\n")
+    pw.close()
+  }
 
   def locallyDone(stepNum: Int): Boolean = {
     doneCounter(stepNum) + voteCounter(stepNum) == nMains
@@ -76,7 +89,18 @@ class PartitionCoordinator(
         println(s"${mainERef} failed to acknowledge ${pcRef}'s location'")
     }
   }
-
+  def exportFinalVals(finalVals: Map[Int, VertexEntity.VertexValT], path: String) = {
+    import java.io.PrintWriter
+    new PrintWriter(path) {
+      finalVals.foreach { case (i, v) =>
+        v match {
+//          case c: com.algorithm.Colour => write(s"$i, ${c.num}\n")
+          case _                       => write(s"$i $v\n")
+        }
+      }
+      close()
+    }
+  }
   override def onMessage(
       msg: PartitionCoordinator.Command
   ): Behavior[PartitionCoordinator.Command] = {
@@ -98,27 +122,44 @@ class PartitionCoordinator(
 
       case DONE(stepNum) =>
         doneCounter(stepNum) += 1
-        println(s"pc ${partitionId} : step ${stepNum}: done counter${doneCounter(stepNum)}; vote counter ${voteCounter(stepNum)}")
+//        log(s"[DC] step ${stepNum} - doneCounter=${doneCounter(stepNum)}; vote counter ${voteCounter(stepNum)}")
+        // Get current size of heap in bytes// Get current size of heap in bytes
+//        val heapSize: Long = Runtime.getRuntime.totalMemory
+        // Get maximum size of heap in bytes. The heap cannot grow beyond this size.// Any attempt will result in an OutOfMemoryException.
+        // Get amount of free memory within the heap in bytes. This size will increase // after garbage collection and decrease as new objects are created.
+//        val heapFreeSize: Long = Runtime.getRuntime.freeMemory
+//        log(s"[[ ${heapSize} + ${heapFreeSize} ] / ${heapMaxSize} ]")
         if (locallyDone(stepNum)) {
-          println("locally done")
+          log("locally done")
+          log(s"sending DONE(${stepNum}) to ${gcRef}")
           gcRef ! GlobalCoordinator.DONE(stepNum)
         }
         Behaviors.same
 
       case TerminationVote(stepNum) =>
         voteCounter(stepNum) += 1
+//        log(s"[VC] step ${stepNum} - vote counter ${voteCounter(stepNum)}; doneCounter=${doneCounter(stepNum)};")
+//        val heapSize: Long = Runtime.getRuntime.totalMemory
+//        val heapFreeSize: Long = Runtime.getRuntime.freeMemory
+
+//        log(s"[[ ${heapSize} + ${heapFreeSize} ] / ${heapMaxSize} ]")
+
         if (locallyTerminated(stepNum)) {
+          log("locally terminated")
           gcRef ! GlobalCoordinator.TerminationVote(stepNum)
         } else if (locallyDone(stepNum)) {
+          log("locally done-terminated")
           gcRef ! GlobalCoordinator.DONE(stepNum)
         }
 
         Behaviors.same
       case BEGIN(stepNum) =>
+        log(s"got BEGIN(${stepNum}), sending BEGIN to ${mains.size} mains")
         for (m <- mains) {
           val eRef = sharding.entityRefFor(VertexEntity.TypeKey, m.toString)
           eRef ! VertexEntity.Begin(stepNum)
         }
+        log("Sent to all mains!")
         Behaviors.same
 
       case GetNMainsAckd(replyTo) =>
@@ -139,9 +180,13 @@ class PartitionCoordinator(
         Behaviors.same
         
       case FinalValue(vtx, value) => {
-        println(s"Received value: ${vtx} -> ${value}")
+//        println(s"Received value: ${vtx} -> ${value}")
         finalValues += (vtx -> value)
         if(finalValues.size == nMains) {
+          log(s"P${pid} got all final values. Exporting to ./result${pid}")
+          exportFinalVals(finalValues.toMap, s"result${pid}")
+          log("Exported!")
+          println(s"sending a map of size ${finalValues.size} to gc")
           gcRef ! GlobalCoordinator.FinalValues(finalValues.toMap)
         }
         Behaviors.same

@@ -1,7 +1,13 @@
 package com.preprocessing.aggregation
 
 import com.preprocessing.aggregation.HDFSUtil.getHDFSfs
-import com.preprocessing.aggregation.Serialization.{Main, Mirror, readMainTextFile, readMirrorTextFile, readObjectArray}
+import com.preprocessing.aggregation.Serialization.{
+  Main,
+  Mirror,
+  readMainTextFile,
+  readMirrorTextFile,
+  readObjectArray
+}
 import com.preprocessing.partitioning.Util._
 import org.apache.hadoop.conf.Configuration
 import org.apache.spark.rdd.RDD
@@ -29,21 +35,20 @@ object Driver {
         partitionFolder = argPartitionFolder
       case Array("--numPartitions", argNumPartitions: String) =>
         numPartitions = argNumPartitions.toInt
-      case Array("--sep", argSep: String)                 => sep = argSep
+      case Array("--sep", argSep: String)           => sep = argSep
       case Array("--hadoopConfDir", argHCD: String) => hadoopConfDir = argHCD
     }
     (partitionFolder, numPartitions, sep, hadoopConfDir)
   }
-  // runMain com.preprocessing.aggregation.Driver --partitionFolder "src/main/resources/graphs/symmRmat/partitions/hybrid/bySrc" --numPartitions 4 --sep " " --hadoopConfDir "/home/atrostan/Workspace/repos/hadoop/hadoop-3.3.1/etc/hadoop"
-
-
+  // runMain com.preprocessing.aggregation.Driver --partitionFolder "src/main/resources/graphs/tmpStore/partitions/1d/bySrc" --numPartitions 4 --sep " " --hadoopConfDir "/home/atrostan/Workspace/repos/hadoop/hadoop-3.3.1/etc/hadoop"
 
   def main(args: Array[String]): Unit = {
 
     val appName: String = "preprocessing.aggregation.Driver"
     val conf = new SparkConf()
       .setAppName(appName)
-      .setMaster("local[*]")
+//      .setMaster("local[*]") // uncomment to run locally
+
     val sc = new SparkContext(conf)
     sc.setLogLevel("ERROR")
     val spark: SparkSession = SparkSession.builder.getOrCreate
@@ -59,35 +64,59 @@ object Driver {
     println(fs)
     // a map between partition ids to location on hdfs of mains, mirrors for that partition
     val partitionMap = (0 until numPartitions)
-      .map(i => (i, partitionFolder + s"/p$i")).toMap
+      .map(i => (i, partitionFolder + s"/p$i"))
+      .toMap
 
     // create mains, mirrors partition dirs if they don't exist
     for ((_, path) <- partitionMap) { createDirectories(Paths.get(path)) }
 
     // (partition id, (source, destination, weight))
-    val edgeList: RDD[(Int, (Int, Int, Int))] = readPartitionsAndJoin(sc, partitionFolder, numPartitions, sep)
+    val edgeList: RDD[(Int, (Int, Int, Int))] =
+      readPartitionsAndJoin(sc, partitionFolder, numPartitions, sep)
 
     val (degrees, outNeighbors, inDegreesPerPartition) = getDegreesByPartition(edgeList)
 
-    val (mains, mirrors) = partitionAssignment(degrees, outNeighbors, inDegreesPerPartition)
+    // save degrees to file
+    // find vertices with zero outdegree
+    val vsWithZeroOutDegree = degrees
+      .filter { case (vid, (pidsWithOuts, _)) =>
+        pidsWithOuts match {
+          case None       => true
+          case Some(pids) => false
+        }
+      }
+      .map(t => (t._1, 0))
+    println("writing sorted outdegrees to " + partitionFolder + "/outdegrees")
+    val outDegrees = outNeighbors.map { case ((vid, pid), es) => (vid, es.size) }.reduceByKey(_ + _)
 
-    println("edges")
-    edgeList.collect().sortBy(t => (t._1, t._2)).foreach(println)
-    println("mains")
-    mains.collect().sortBy(t => (t._1)).foreach(println)
+    vsWithZeroOutDegree
+      .union(outDegrees)
+      .sortByKey()
+      .map { case (i, d) => s"$i $d" }
+      .coalesce(1)
+      .saveAsTextFile(partitionFolder + "/outdegrees")
+
+    val inDegrees =
+      inDegreesPerPartition.map { case ((vid, pid), d) => (vid, d) }.reduceByKey(_ + _)
+    println("writing sorted indegrees to " + partitionFolder + "/indegrees")
+    inDegrees
+      .sortByKey()
+      .map { case (i, d) => s"$i $d" }
+      .coalesce(1)
+      .saveAsTextFile(partitionFolder + "/indegrees")
+    val (mains, mirrors) = partitionAssignment(degrees, outNeighbors, inDegreesPerPartition)
 
     // find out the identity of outgoing neighbours
     val taggedEdges = tagEdges(mains, edgeList)
     val taggedMains = tagMains(mains, taggedEdges)
     val taggedMirrors = tagMirrors(mirrors, taggedEdges)
-
     // save to file
     partitionMainsDF(taggedMains, spark, partitionMap, fs)
     partitionMirrorsDF(taggedMirrors, spark, partitionMap, fs)
     // read for debug
-    println("#"*68)
+    println("#" * 68)
     println("DEBUG OUTPUT")
-    println("#"*68)
+    println("#" * 68)
     for ((pid, path) <- partitionMap) {
       println(s"Reading partition ${pid} in ${path}")
 //      val hdfsMainPath = s"hdfs:///graphs/symmRmat/partitions/1d/bySrc/p${pid}/mains/part-00000"
@@ -95,12 +124,8 @@ object Driver {
       val hdfsMainPath = path + "/mains/part-00000"
       val hdfsMirrorPath = path + "/mirrors/part-00000"
       println(hdfsMainPath)
-      val mns = readMainTextFile(hdfsMainPath,fs)
-      println("mains")
-      mns.foreach(println)
-      val mrs = readMirrorTextFile(hdfsMirrorPath,fs)
-      println("mirrors")
-      mrs.foreach(println)
+      val mns = readMainTextFile(hdfsMainPath, fs)
+      val mrs = readMirrorTextFile(hdfsMirrorPath, fs)
 //      val mains = readMainPartitionDF(path+"/mains", spark)
 //      val mirrors = readMirrorPartitionDF(path+"/mirrors", spark)
 //      val mains = readObjectArray[Main](path+"/mains.ser")

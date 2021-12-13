@@ -24,7 +24,7 @@ class PageRank(iters: Int) extends VertexProgram[Int, Double, Double, Double] {
   }
 
   override def scatter(superStepNumber: Int, thisVertex: VertexInfo, oldVal: Double, newVal: Double): Option[Double] = {
-    if(superStepNumber >= iters) {
+    if(superStepNumber >= iters || thisVertex.degree == 0) {
       None
     } else {
       Some(newVal / thisVertex.degree)

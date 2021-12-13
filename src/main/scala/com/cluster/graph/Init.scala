@@ -21,7 +21,7 @@ import scala.concurrent.{Await, Future}
 import scala.reflect.ClassTag
 
 object Init {
-  val waitTime = 10 seconds
+  val waitTime = 5 minute
   implicit val timeout: Timeout = waitTime
 
   // Sample graph for partitioning and akka population test
@@ -332,8 +332,9 @@ object Init {
       eid: EntityId,
       neighbors: List[(EntityId, Int)],
       mirrors: List[EntityId],
-      inDegree: Int,
-      totalMainsInitialized: Int
+      partitionInDegree: Int,
+      outDegree: Int,
+      totalMainsInitialized: Int,
   ): Int = {
     // async call to initialize main
     val future: Future[VertexEntity.InitializeResponse] = mainERef.ask(ref =>
@@ -342,7 +343,8 @@ object Init {
         eid.partitionId,
         neighbors,
         mirrors,
-        inDegree,
+        partitionInDegree,
+        outDegree,
         ref
       )
     )
@@ -374,7 +376,8 @@ object Init {
       m: EntityId,
       eid: EntityId,
       neighbors: List[(EntityId, Int)],
-      inDegree: Int,
+      partitionInDegree: Int,
+      outDegree: Int,
       totalMirrorsInitialized: Int
   ): Int = {
     val future: Future[VertexEntity.InitializeResponse] = mirrorERef.ask(ref =>
@@ -383,7 +386,8 @@ object Init {
         m.partitionId,
         eid,
         neighbors,
-        inDegree,
+        partitionInDegree,
+        outDegree,
         ref
       )
     )
@@ -410,6 +414,18 @@ object Init {
       case GlobalCoordinator.BroadcastRefResponse(message) =>
         println(message)
     }
+  }
 
+  def readEdgelistForVerification(path: String) = {
+    import scala.io.Source
+    var el = collection.mutable.ArrayBuffer[(Int,Int)]()
+    for (line <- Source.fromFile(path).getLines) {
+      val a = line.split(",\\(")(1)
+        .split(",")
+      val src = a(0).trim.toInt
+      val dest = a(1).replace(")", "").trim.toInt
+      el.append((src, dest))
+    }
+    el
   }
 }

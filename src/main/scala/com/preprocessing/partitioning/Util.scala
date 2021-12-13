@@ -10,7 +10,17 @@ import org.apache.spark.sql.{Dataset, Row, SparkSession}
 import org.apache.spark.{Partitioner, SparkContext}
 import org.yaml.snakeyaml.Yaml
 
-import java.io.{DataInput, DataOutput, File, FileInputStream, FileNotFoundException, FileOutputStream, IOException, ObjectOutputStream, OutputStream}
+import java.io.{
+  DataInput,
+  DataOutput,
+  File,
+  FileInputStream,
+  FileNotFoundException,
+  FileOutputStream,
+  IOException,
+  ObjectOutputStream,
+  OutputStream
+}
 import java.nio.file.Files.createDirectories
 import java.nio.file.{Files, Path, Paths}
 import scala.collection.JavaConverters._
@@ -21,6 +31,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.FileSystem
 import org.apache.hadoop.fs.{Path => HDFSPath}
 import org.apache.hadoop.io.{ArrayWritable, Writable}
+import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK
 
 object Util {
 
@@ -207,36 +218,69 @@ object Util {
       sc: SparkContext,
       infile: String,
       sep: String,
-      isWeighted: Boolean
+      isWeighted: Boolean,
+      symmetrize: Boolean
   ): EitherEdgeRDD = {
     val strList: RDD[String] = sc.textFile(infile)
     val split = strList
       .filter(s => !s.contains("#"))
       .map(s => s.split(sep))
     if (isWeighted) {
-      Left(
-        split
-          .map(s => ((s(0).toInt, s(1).toInt), s(2).toInt))
-          .reduceByKey(
-            math.max(_, _)
-          ) // if multiple edges between same source and dest, take the maximum weighted edge
-          .map(row => (row._1._1, row._1._2, row._2)) // unpack again
-          .distinct()
-          .filter(e => e._1 != e._2)
-          .sortBy(e => (e._1, e._2, e._3))
-          .zipWithUniqueId()
-          .map(r => (r._2, r._1))
-      )
+      if (symmetrize) {
+        Left(
+          split
+            .map(s => ((s(0).toInt, s(1).toInt), s(2).toInt))
+            // if multiple edges between same source and dest, take the maximum weighted edge
+            .reduceByKey(
+              math.max(_, _)
+            )
+            .map(row => (row._1._1, row._1._2, row._2)) // unpack again
+            .flatMap{ case (u, v, wt) => List((u, v, wt), (v, u, wt))} // add an edge in the opposite direction
+            .distinct()
+            .filter(e => e._1 != e._2)
+            .sortBy(e => (e._1, e._2, e._3))
+            .zipWithUniqueId()
+            .map(r => (r._2, r._1))
+        )
+      } else {
+        Left(
+          split
+            .map(s => ((s(0).toInt, s(1).toInt), s(2).toInt))
+            // if multiple edges between same source and dest, take the maximum weighted edge
+            .reduceByKey(
+              math.max(_, _)
+            )
+            .map(row => (row._1._1, row._1._2, row._2)) // unpack again
+            .distinct()
+            .filter(e => e._1 != e._2)
+            .sortBy(e => (e._1, e._2, e._3))
+            .zipWithUniqueId()
+            .map(r => (r._2, r._1))
+        )
+      }
     } else {
-      Right(
-        split
-          .map(s => (s(0).toInt, s(1).toInt))
-          .distinct()
-          .filter(e => e._1 != e._2)
-          .sortBy(e => (e._1, e._2))
-          .zipWithUniqueId()
-          .map(r => (r._2, r._1))
-      )
+      if (symmetrize) {
+        Right(
+          split
+            .map(s => (s(0).toInt, s(1).toInt))
+            .flatMap{ case (u, v) => List((u, v), (v, u))} // add an edge in the opposite direction
+            .distinct()
+            .filter(e => e._1 != e._2)
+            .sortBy(e => (e._1, e._2))
+            .zipWithUniqueId()
+            .map(r => (r._2, r._1))
+        )
+      } else {
+        Right(
+          split
+            .map(s => (s(0).toInt, s(1).toInt))
+            .distinct()
+            .filter(e => e._1 != e._2)
+            .sortBy(e => (e._1, e._2))
+            .zipWithUniqueId()
+            .map(r => (r._2, r._1))
+        )
+      }
     }
   }
 
@@ -320,6 +364,18 @@ object Util {
         .mode("overwrite")
         .format(format)
         .save(formattedPath)
+
+//      println("Also saving as space separated values for readability")
+//      val tsvWithHeaderOptions: Map[String, String] = Map(
+//        ("delimiter", " "), // Uses " " delimiter instead of default ","
+//        ("header", "false"))  // Writes a header record with column names
+//
+//      df
+//        .coalesce(1)
+//        .write
+//        .mode("overwrite")
+//        .options(tsvWithHeaderOptions)
+//        .csv(path + ".csv")
     }
   }
 
@@ -404,7 +460,7 @@ object Util {
     for ((pid, path) <- partitionMap) {
       println(s"writing mirrors to ${path}/mirrors")
       val partition = df.filter(s"partitionId == ${pid}")
-//      partition.write.mode("overwrite").parquet(path + "/mirrors")
+      //      partition.write.mode("overwrite").parquet(path + "/mirrors")
       writeMirrorArray(partition, path + "/mirrors")
     }
   }
@@ -723,8 +779,10 @@ object Util {
       }
       .map(t => ((t._1, t._2), t._3))
 
-    vertexMainAndMirrors
-      .cache() // cache the mains in memory so that their correct location can be propagated to their mirrors
+    // cache the mains in memory so that a consistent, deterministic location is propagated to their mirrors
+    println("Caching Vertex Main and Mirror assignment to MEMORY_AND_DISK")
+    vertexMainAndMirrors.persist(MEMORY_AND_DISK)
+
     val mirrors = vertexMainAndMirrors.flatMap { case ((vid: Int, _), mirrorPids: Set[Int]) =>
       mirrorPids.map(mirrorPid => (vid, mirrorPid))
     }
@@ -738,20 +796,55 @@ object Util {
     val mainPids = vertexMainAndMirrors.map { case ((vid: Int, pid: Int), _: Set[Any]) =>
       (vid, pid)
     }
+
+    val wrongMirrors = mirrors
+      .join(mainPids)
+      .map { case (vid, (pid, mainPid)) => ((vid, pid), mainPid) }
+      .filter { case ((_, pid), mainPid) => pid == mainPid }
+
+    // Persistence of Main vertex assignment: Sanity check #1
+    // ensure that no mirrors have been assigned to the same partition as their main
+    val nWrongMirrors = wrongMirrors.count()
+    if (nWrongMirrors > 0) {
+      throw new RuntimeException(
+        s"${nWrongMirrors} mirrors were assigned to the same partition as their main!"
+      )
+    }
     val mirrorsWithMainPids = mirrors
-      // add the main partition id to each mirror vertex (mirrors should know the location of their main)
+      // add the main partition id to each mirror vertex
+      // (mirrors should know the location of their main)
       .join(mainPids)
       .map { case (vid: Int, (pid: Int, mainPid: Int)) => ((vid, pid), mainPid) }
       .leftOuterJoin(outNeighbors)
       .leftOuterJoin(inDegreesPerPartition)
       .map(row => cleanupMirrorRow(row))
 
-    val nInEdges =
-      mirrorsWithMainPids.map(t => t._4).reduce(_ + _) + mains.map(t => t._4).reduce(_ + _)
-    val nOutEdges = mirrorsWithMainPids.map(t => t._3.size).reduce(_ + _) +
-      mains.map(t => t._3.size).reduce(_ + _)
-    println("nInEdges: ", nInEdges)
-    println("nOutEdges: ", nOutEdges)
+    val mirrorInEdgeSum = mirrorsWithMainPids
+      .map { case ((_, _), _, _, partitionInDeg) => partitionInDeg }
+      .reduce(_ + _)
+    val mainInEdgeSum = mains
+      .map { case ((_, _), _, _, partitionInDeg) => partitionInDeg }
+      .reduce(_ + _)
+    val mirrorOutEdgeSum = mirrorsWithMainPids
+      .map { case ((_, _), _, ns, _) => ns.size }
+      .reduce(_ + _)
+    val mainOutEdgeSum = mains
+      .map { case ((_, _), _, ns, _) => ns.size }
+      .reduce(_ + _)
+
+    val nInEdges = mirrorInEdgeSum + mainInEdgeSum
+    val nOutEdges = mirrorOutEdgeSum + mainOutEdgeSum
+
+    // Persistence of Main vertex assignment: Sanity check #2
+    if (nInEdges != nOutEdges) {
+      throw new RuntimeException(
+        s"Discrepancy between the number of inedges and outedges in the graph: ${nInEdges} != ${nOutEdges}!"
+      )
+    }
+
+    println(
+      s"Number of In Edges in the graph == Number of Out Edges in the graph; ${nOutEdges} == ${nInEdges}"
+    )
     // TODO: can calculate replication factor here
 
     (mains, mirrorsWithMainPids)

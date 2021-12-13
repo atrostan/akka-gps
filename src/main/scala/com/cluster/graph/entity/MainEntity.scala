@@ -34,31 +34,31 @@ class MainEntity(
   val sharding = ClusterSharding(ctx.system)
 
   override def ctxLog(event: String): Unit = {
-    ctx.log.info(
-      s"******************{} ${event} at {}, eid: {}",
-      ctx.self.path,
-      nodeAddress,
-      entityContext.entityId
-    )
+//    ctx.log.info(
+//    println(
+//      s"******************{} ${event} at {}, eid: {}",
+//      ctx.self.path,
+//      nodeAddress,
+//      entityContext.entityId
+//    )
   }
 
   override def onMessage(
       msg: VertexEntity.Command
   ): Behavior[VertexEntity.Command] = {
     msg match {
-      case VertexEntity.Initialize(vid, pid, neigh, mrs, inDeg, replyTo) =>
+      case VertexEntity.Initialize(vid, pid, neigh, mrs, inDeg, outDeg, replyTo) =>
         vertexId = vid
         partitionId = pid.toShort
         neighbors ++= neigh
         mirrors ++= mrs
         partitionInDegree = inDeg
-        thisVertexInfo = VertexInfo(vertexId, neighbors.size)
+        thisVertexInfo = VertexInfo(vertexId, outDeg)
 
-
-        val logStr = s"Received ask to initialize Main ${vertexId}_${partitionId}"
-        ctxLog(logStr)
-        ctxLog(neighbors.toString())
-        ctxLog(mirrors.toString())
+//        val logStr = s"Received ask to initialize Main ${vertexId}_${partitionId}"
+//        ctxLog(logStr)
+//        ctxLog(neighbors.toString())
+//        ctxLog(mirrors.toString())
         replyTo ! InitializeResponse(s"Initialized Main ${vertexId}_${partitionId}")
         Behaviors.same
 
@@ -70,13 +70,13 @@ class MainEntity(
 
       // GAS Actions
       case VertexEntity.Begin(0) => {
-        ctxLog("Beginning compute: Step 0")
+//        ctxLog("Beginning compute: Step 0")
         applyAndScatter(0, None)
         Behaviors.same
       }
 
       case VertexEntity.Begin(stepNum) => {
-        ctxLog(s"Beginning compute: Step ${stepNum}")
+//        ctxLog(s"Beginning compute: Step ${stepNum}")
         okToProceed(stepNum) = true
         applyIfReady(stepNum)
         value += 1
@@ -84,14 +84,14 @@ class MainEntity(
       }
 
       case VertexEntity.End =>
-        ctxLog("Ordered to stop " + msg)
+//        ctxLog("Ordered to stop " + msg)
         // TODO Needed?
         Behaviors.same
 
       case c: VertexEntity.NeighbourMessage => reactToNeighbourMessage(c)
 
       case MirrorTotal(stepNum, mirrorTotal) => {
-        ctxLog("Received mirror total " + mirrorTotal)
+//        ctxLog("Received mirror total " + mirrorTotal)
         mirrorTotal match {
           case None => ()
           case Some(mirrorTotal) => {
@@ -124,7 +124,7 @@ class MainEntity(
         value += 1
         Behaviors.same
       case VertexEntity.GetValue(replyTo) =>
-        ctxLog("get value")
+//        ctxLog("get value")
         replyTo ! VertexEntity.SubTtl(entityContext.entityId, value)
         Behaviors.same
       case VertexEntity.EchoValue =>
@@ -142,7 +142,7 @@ class MainEntity(
     (active, total) match {
       case (false, None) => {
         // Vote to terminate
-        println(s"step: ${stepNum} term v${this.vertexId}: color:${currentValue}")
+//        println(s"step: ${stepNum} term v${this.vertexId}: color:${currentValue}")
         pcRef ! PartitionCoordinator.TerminationVote(stepNum) // TODO change to new PC command
 
         // Still have to send null messages to neighbours
@@ -159,7 +159,7 @@ class MainEntity(
         val newVal = vertexProgram.apply(stepNum, thisVertexInfo, currentValue, total)
         val oldVal = currentValue
         currentValue = newVal
-        println(s"step: ${stepNum} cont v${this.vertexId}: color:${currentValue}")
+//        println(s"step: ${stepNum} cont v${this.vertexId}: color:${currentValue}")
         val cmd = ApplyResult(stepNum, oldVal, Some(newVal))
         for (mirror <- mirrors) {
 //          println(mirror)

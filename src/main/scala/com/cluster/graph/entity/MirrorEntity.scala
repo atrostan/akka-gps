@@ -25,44 +25,45 @@ class MirrorEntity(
   val sharding = ClusterSharding(ctx.system)
 
   override def ctxLog(event: String): Unit = {
-    ctx.log.info(
-      s"******************{} ${event} at {}, eid: {}",
-      ctx.self.path,
-      nodeAddress,
-      entityContext.entityId
-    )
+//    ctx.log.info(
+//    println(
+//      s"******************{} ${event} at {}, eid: {}",
+//      ctx.self.path,
+//      nodeAddress,
+//      entityContext.entityId
+//    )
   }
 
   override def onMessage(
       msg: VertexEntity.Command
   ): Behavior[VertexEntity.Command] = {
     msg match {
-      case VertexEntity.InitializeMirror(vid, pid, m, neighs, inDeg, replyTo) =>
+      case VertexEntity.InitializeMirror(vid, pid, m, neighs, inDeg, outDeg, replyTo) =>
         vertexId = vid
         partitionId = pid.toShort
         neighbors ++= neighs
         main = m
         partitionInDegree = inDeg
-        thisVertexInfo = VertexInfo(vertexId, neighbors.size)
-        val logStr = s"Received ask to initialize Mirror ${vertexId}_${partitionId}"
-        ctxLog(logStr)
+        thisVertexInfo = VertexInfo(vertexId, outDeg)
+//        val logStr = s"Received ask to initialize Mirror ${vertexId}_${partitionId}"
+//        ctxLog(logStr)
         replyTo ! VertexEntity.InitializeResponse(s"Initialized Mirror ${vertexId}_${partitionId}")
         Behaviors.same
 
       // GAS Actions
       case VertexEntity.Begin(stepNum) =>
-        ctxLog("Beginning compute")
+//        ctxLog("Beginning compute")
         value += 1
         Behaviors.same
       case VertexEntity.End =>
-        ctxLog("Ordered to stop " + msg)
+//        ctxLog("Ordered to stop " + msg)
         // TODO Needed?
         Behaviors.same
 
       case c: VertexEntity.NeighbourMessage => reactToNeighbourMessage(c)
 
       case ApplyResult(stepNum, oldVal, newVal) => {
-        ctxLog("Received apply value from Main " + newVal)
+//        ctxLog("Received apply value from Main " + newVal)
         localScatter(stepNum, oldVal, newVal, sharding)
         // If no incoming edges, then need to send a message to Main for the next superstep
         if(this.partitionInDegree == 0) {
@@ -81,15 +82,15 @@ class MirrorEntity(
 
       // Counter actions TESTING ONLY
       case VertexEntity.Increment =>
-        ctxLog("adding")
+//        ctxLog("adding")
         value += 1
         Behaviors.same
       case VertexEntity.GetValue(replyTo) =>
-        ctxLog("get value")
+//        ctxLog("get value")
         replyTo ! VertexEntity.SubTtl(entityContext.entityId, value)
         Behaviors.same
       case VertexEntity.EchoValue =>
-        ctxLog("echo (logging only) value")
+//        ctxLog("echo (logging only) value")
         Behaviors.same
 
       case _ =>
