@@ -68,7 +68,7 @@ object DiscoveryApp {
   ): Unit = {
     implicit val scheduler = domainListener.scheduler
 
-    val waitTime = 10 seconds
+    val waitTime = 1 minute
     implicit val timeout: Timeout = waitTime
 
     var flag = true
@@ -257,25 +257,25 @@ object DiscoveryApp {
       type FinalValueType = VertexEntity.VertexValT
       //      type FinalValueType = Int
 
-      var finalVals: Map[Int, FinalValueType] = null
-      while (null == finalVals) {
-        Thread.sleep(1000)
-
-        val timeout: Timeout = 5.seconds
-        val sched = entityManager.scheduler
-        val future: Future[GlobalCoordinator.FinalValuesResponse] =
-          gcRef.ask(ref => GlobalCoordinator.GetFinalValues(ref))(timeout, sched)
-        Await.result(future, Duration.Inf) match {
-          case FinalValuesResponseComplete(valueMap) =>
-
-            finalVals = valueMap
-          case FinalValuesResponseNotFinished => ()
-        }
-      }
-      val computationDuration = (System.nanoTime - startComputation) / 1e9d
-      log(s"vertex program took: ${computationDuration}")
-      log("Final values:")
-      finalVals.foreach(v => log(v.toString()))
+//      var finalVals: Map[Int, FinalValueType] = null
+//      while (null == finalVals) {
+//        Thread.sleep(1000)
+//
+//        val timeout: Timeout = 5.seconds
+//        val sched = entityManager.scheduler
+//        val future: Future[GlobalCoordinator.FinalValuesResponse] =
+//          gcRef.ask(ref => GlobalCoordinator.GetFinalValues(ref))(timeout, sched)
+//        Await.result(future, Duration.Inf) match {
+//          case FinalValuesResponseComplete(valueMap) =>
+//
+//            finalVals = valueMap
+//          case FinalValuesResponseNotFinished => ()
+//        }
+//      }
+//      val computationDuration = (System.nanoTime - startComputation) / 1e9d
+//      log(s"vertex program took: ${computationDuration}")
+//      log("Final values:")
+//      finalVals.foreach(v => log(v.toString()))
 //
       log("checking colouring correctness...")
       def checkColouringCorrectness(coloring: Map[Int, FinalValueType]) = {
@@ -307,7 +307,7 @@ object DiscoveryApp {
         log("Colouring Valid!")
         //        sc.stop()
       }
-      checkColouringCorrectness(finalVals)
+//      checkColouringCorrectness(finalVals)
 //      exportFinalVals(finalVals)
 
     } else if (partitionIps.contains(myIp)) {

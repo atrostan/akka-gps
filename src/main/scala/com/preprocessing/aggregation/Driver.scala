@@ -111,8 +111,29 @@ object Driver {
     val taggedMains = tagMains(mains, taggedEdges)
     val taggedMirrors = tagMirrors(mirrors, taggedEdges)
     // save to file
-    partitionMainsDF(taggedMains, spark, partitionMap, fs)
-    partitionMirrorsDF(taggedMirrors, spark, partitionMap, fs)
+    val mainsPerPartition = partitionMainsDF(taggedMains, spark, partitionMap, fs)
+    val mirrorsPerPartition = partitionMirrorsDF(taggedMirrors, spark, partitionMap, fs)
+    println("#" * 68)
+    println("Number of Mains, Mirrors in Partitioning")
+    println("#" * 68)
+    val merged = (mainsPerPartition.toList ++ mirrorsPerPartition.toList)
+      .groupBy(_._1)
+      .map{ case (k, v) => k -> v.map(_._2)}
+
+    merged.foreach{ case(pid, v) =>
+      val nMains = v(0)
+      val nMirrors = v(1)
+      println(s"Partition $pid")
+      println(s"\tnMains: $nMains")
+      println(s"\tnMirrors: $nMirrors")
+    }
+
+    sc
+      .parallelize(merged.toList)
+      .coalesce(1)
+      .saveAsTextFile(partitionFolder + "/vertexCopies")
+
+
     // read for debug
     println("#" * 68)
     println("DEBUG OUTPUT")

@@ -64,6 +64,8 @@ lazy val `akka-gps` = project
       "org.yaml" % "snakeyaml" % "1.29",
       "org.apache.hadoop" % "hadoop-hdfs" % "3.3.1",
       "org.scala-graph" %% "graph-core" % "1.12.5",
+//      "com.typesafe.akka" % "akka-slf4j_2.11" % "2.5.32",
+      "ch.qos.logback" % "logback-classic" % "1.2.7",
     ),
     run / fork := false,
     Global / cancelable := false,

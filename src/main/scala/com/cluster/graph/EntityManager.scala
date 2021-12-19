@@ -38,7 +38,7 @@ class EntityManager(
   val myShardAllocationStrategy = new MyShardAllocationStrategy(partitionMap)
   val cluster = Cluster(ctx.system)
   val sharding = ClusterSharding(ctx.system)
-  val waitTime = 20 seconds
+  val waitTime = 1 minute
   val numberOfShards = ConfigFactory.load("cluster")
   val messageExtractor = new VertexIdExtractor[VertexEntity.Command](
     numberOfShards.getInt("akka.cluster.sharding.number-of-shards")

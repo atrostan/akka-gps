@@ -32,7 +32,7 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
 
   import GlobalCoordinator._
 
-  val waitTime = 10 seconds
+  val waitTime = 1 minute
   implicit val timeout: Timeout = waitTime
   implicit val ec = ctx.system.executionContext
   implicit val scheduler = ctx.system.scheduler
@@ -48,8 +48,11 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
   var numPartitions = -1
   var numNodes = -1
   var startComputationTime: Long = 0
+  var startMS: Long = 0
+  var endMS: Long = 0
   val finalValues = collection.mutable.Map[Int, VertexEntity.VertexValT]()
   var nPCFinalValues = 0
+  val iterationTimes = collection.mutable.Map[Int, Long]()
 
   def log(s: String) = {
     val pw = new FileWriter("./globalLog", true)
@@ -86,6 +89,8 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
       case BEGIN() =>
         log("broadcasting begin 0 to pcs")
         startComputationTime = System.nanoTime()
+        startMS = System.currentTimeMillis()
+        iterationTimes(0) = System.currentTimeMillis()
         broadcastBEGINToPCs(0)
         Behaviors.same
 
@@ -98,6 +103,7 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
         if (globallyDone(stepNum)) {
           log("globally done =========================================================================================================================================")
           log(s"beginning superstep ${stepNum + 1}")
+          iterationTimes(stepNum+1) = System.currentTimeMillis()
           broadcastBEGINToPCs(stepNum + 1)
         }
         Behaviors.same
@@ -106,8 +112,20 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
 
         voteCounter(stepNum) += 1
         if (globallyTerminated(stepNum)) {
-          val computationDuration = (System.nanoTime - startComputationTime) / 1e9d
-          log(s"vertex program took: ${computationDuration}")
+          val endTime = System.nanoTime
+          endMS = System.currentTimeMillis()
+          val computationDuration = (endTime - startComputationTime) / 1e9d
+          log(s"Internal global coordinator timer - vertex program took: ${computationDuration}")
+
+          val pw = new FileWriter("./times", true)
+          pw.write(s"$stepNum $startMS $endMS $computationDuration\n")
+          pw.close()
+
+          val iter_pw = new FileWriter("./iterations", true)
+          for ((iterNum, startTime) <- iterationTimes) {
+            iter_pw.write(s"$iterNum $startTime\n")
+          }
+          iter_pw.close();
           log("TERMINATION")
           //TODO TERMINATE..?
           nPCFinalValues = 0
@@ -115,6 +133,7 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
             pcRef ! PartitionCoordinator.GetFinalValues
           }
         } else if (globallyDone(stepNum)) {
+          iterationTimes(stepNum+1) = System.currentTimeMillis()
           broadcastBEGINToPCs(stepNum + 1)
         }
         Behaviors.same

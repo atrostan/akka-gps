@@ -21,7 +21,7 @@ import scala.concurrent.{Await, Future}
 import scala.reflect.ClassTag
 
 object Init {
-  val waitTime = 5 minute
+  val waitTime = 5 minutes
   implicit val timeout: Timeout = waitTime
 
   // Sample graph for partitioning and akka population test

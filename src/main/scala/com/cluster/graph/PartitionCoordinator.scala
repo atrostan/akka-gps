@@ -42,7 +42,7 @@ class PartitionCoordinator(
 
 
   val pcRef: ActorRef[PartitionCoordinator.Command] = ctx.self
-  val waitTime = 10 seconds
+  val waitTime = 1 minute
   // In order for vertices to be able to send messages, they need to sharding.entityRefFor by entity id
   val cluster = Cluster(ctx.system)
   val sharding = ClusterSharding(ctx.system)
@@ -187,7 +187,7 @@ class PartitionCoordinator(
           exportFinalVals(finalValues.toMap, s"result${pid}")
           log("Exported!")
           println(s"sending a map of size ${finalValues.size} to gc")
-          gcRef ! GlobalCoordinator.FinalValues(finalValues.toMap)
+//          gcRef ! GlobalCoordinator.FinalValues(finalValues.toMap)
         }
         Behaviors.same
       }

@@ -409,7 +409,7 @@ object Util {
       spark: SparkSession,
       partitionMap: Map[Int, String],
       fs: FileSystem
-  ): Unit = {
+  ): mutable.TreeMap[Int, Long] = {
     val rowRDD = mains.map {
       case (
             (vid: Int, pid: Int),
@@ -426,13 +426,17 @@ object Util {
         )
     }
     val df = spark.createDataFrame(rowRDD, mainRowSchema)
+    val mainsPerPartition = mutable.TreeMap[Int, Long]()
     for ((pid, path) <- partitionMap) {
       println(s"writing mains to ${path}/mains")
       createFolder(path)
       val partition = df.filter(s"partitionId == ${pid}")
+      val nMains = partition.count()
+      mainsPerPartition += (pid -> nMains)
 //      partition.write.mode("overwrite").parquet(path + "/mains")
       writeMainArray(partition, path + "/mains", fs)
     }
+    mainsPerPartition
   }
 
   def partitionMirrorsDF(
@@ -440,7 +444,7 @@ object Util {
       spark: SparkSession,
       partitionMap: Map[Int, String],
       fs: FileSystem
-  ): Unit = {
+  ): mutable.TreeMap[Int, Long] = {
     val rowRDD = mirrors.map {
       case (
             (vid: Int, pid: Int),
@@ -457,12 +461,17 @@ object Util {
         )
     }
     val df = spark.createDataFrame(rowRDD, mirrorRowSchema)
+    val mirrorsPerPartition = mutable.TreeMap[Int, Long]()
+
     for ((pid, path) <- partitionMap) {
       println(s"writing mirrors to ${path}/mirrors")
       val partition = df.filter(s"partitionId == ${pid}")
+      val nMirrors = partition.count()
+      mirrorsPerPartition += (pid -> nMirrors)
       //      partition.write.mode("overwrite").parquet(path + "/mirrors")
       writeMirrorArray(partition, path + "/mirrors")
     }
+    mirrorsPerPartition
   }
 
   val mainRowSchema = StructType(
@@ -709,7 +718,7 @@ object Util {
           )
       )
     }
-    rdds.reduce(_.union(_))
+    rdds.reduce(_.union(_)).persist(MEMORY_AND_DISK)
   }
 
   /** Given a partition edgelist, calculate:
@@ -753,7 +762,7 @@ object Util {
 
     val degrees = allOutDegrees.fullOuterJoin(allInDegrees)
 
-    (degrees, outNeighbors, inDegreesPerPartition)
+    (degrees.persist(MEMORY_AND_DISK), outNeighbors.persist(MEMORY_AND_DISK), inDegreesPerPartition.persist(MEMORY_AND_DISK))
   }
 
   /** Given the per-partition out degree and in degree of every node in the graph, assign each node
@@ -762,10 +771,19 @@ object Util {
     * @param degrees
     */
   def partitionAssignment(
-      degrees: RDD[(Int, (Option[Iterable[Int]], Option[Iterable[Int]]))],
-      outNeighbors: RDD[((Int, Int), Iterable[(Int, Int)])],
-      inDegreesPerPartition: RDD[((Int, Int), Int)]
+      ds: RDD[(Int, (Option[Iterable[Int]], Option[Iterable[Int]]))],
+      outNs: RDD[((Int, Int), Iterable[(Int, Int)])],
+      inDegsPerPartition: RDD[((Int, Int), Int)]
   ) = {
+    println("Caching degrees to MEMORY_AND_DISK")
+    val degrees = ds.persist(MEMORY_AND_DISK)
+
+    println("Caching outNeighbors to MEMORY_AND_DISK")
+    val outNeighbors = outNs.persist(MEMORY_AND_DISK)
+
+    println("Caching inDegreesPerPartition to MEMORY_AND_DISK")
+    val inDegreesPerPartition = inDegsPerPartition.persist(MEMORY_AND_DISK)
+
     val vertexMainAndMirrors: RDD[((Int, Int), Set[_ <: Int])] = degrees
       .map {
         case (
@@ -776,24 +794,24 @@ object Util {
               )
             ) =>
           mainMirrorAssignment(vid, psWithOutNeighbors, psWithInNeighbors)
-      }
+      }.persist(MEMORY_AND_DISK)
       .map(t => ((t._1, t._2), t._3))
 
     // cache the mains in memory so that a consistent, deterministic location is propagated to their mirrors
     println("Caching Vertex Main and Mirror assignment to MEMORY_AND_DISK")
-    vertexMainAndMirrors.persist(MEMORY_AND_DISK)
+    val persistedVertexMainAndMirrors = vertexMainAndMirrors.persist(MEMORY_AND_DISK)
 
-    val mirrors = vertexMainAndMirrors.flatMap { case ((vid: Int, _), mirrorPids: Set[Int]) =>
+    val mirrors = persistedVertexMainAndMirrors.flatMap { case ((vid: Int, _), mirrorPids: Set[Int]) =>
       mirrorPids.map(mirrorPid => (vid, mirrorPid))
     }
 
     // add (partition-local) outgoing neighbours and partition in degree to mains
-    val mains = vertexMainAndMirrors
+    val mains = persistedVertexMainAndMirrors
       .leftOuterJoin(outNeighbors)
       .leftOuterJoin(inDegreesPerPartition)
       .map(row => cleanupMainRow(row))
 
-    val mainPids = vertexMainAndMirrors.map { case ((vid: Int, pid: Int), _: Set[Any]) =>
+    val mainPids = persistedVertexMainAndMirrors.map { case ((vid: Int, pid: Int), _: Set[Any]) =>
       (vid, pid)
     }
 

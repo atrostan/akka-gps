@@ -92,9 +92,9 @@ object ClusterShardingApp {
     var nMains = 0
     var nMirrors = 0
     val fs = FileSystem.get(hadoopConfig)
-    val outDegMap = readDegTextFile("/home/atrostan/Workspace/akka-gps/src/main/resources/graphs/symmRmat/partitions/hybrid/bySrc/outdegrees/part-00000", fs)
+    val outDegMap = readDegTextFile("/home/atrostan/Documents/flintrock/deploy/bySrc/outdegrees/part-00000", fs)
     println("outdegmap")
-    outDegMap.foreach(println)
+//    outDegMap.foreach(println)
     for (shardPort <- shardPorts) {
       val path = workerMap(pid)
       //      val mirrors = readMirrorPartitionDF(path + "/mirrors", spark).collect()
@@ -107,11 +107,8 @@ object ClusterShardingApp {
 
       // the vertices (mains or mirrors) present in this partition
       val vidSet = mains.map(t => t._1).toSet.union(mirrors.map(t => t._1).toSet)
-      println(pid)
-      println(vidSet)
 
       val outDegsOnPid = vidSet.foldLeft(Map[Int, Int]()){ (acc, x) => acc + (x -> outDegMap(x)) }
-      println(outDegsOnPid)
       val pcPort = shardPort + numberOfShards
       val shardConfig = createConfig("shard", shardPort)
       val pcConfig = createConfig("partitionCoordinator", pcPort)

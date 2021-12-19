@@ -40,9 +40,9 @@ class Compressor(edgeList: EitherEdgeRDD) {
     // get source ids
 
     println("Caching the indexed edgelist to MEMORY_AND_DISK")
-    rdd.persist(MEMORY_AND_DISK)
+    val persistedRDD = rdd.persist(MEMORY_AND_DISK)
 
-    val sources: RDD[Int] = rdd
+    val sources: RDD[Int] = persistedRDD
       .map(row => row._2._1)
       .distinct()
       .sortBy(el => el, ascending = true)
@@ -51,7 +51,7 @@ class Compressor(edgeList: EitherEdgeRDD) {
       .zipWithIndex()
 
     val maxSource: Long = sourceMap.map(_._2).max()
-    val unseenDestinations: RDD[(Int, Long)] = rdd
+    val unseenDestinations: RDD[(Int, Long)] = persistedRDD
       .map(row => row._2._2)
       .distinct()
       .subtract(sources)
@@ -64,19 +64,19 @@ class Compressor(edgeList: EitherEdgeRDD) {
     nNodes = vertexMap.count()
     println(s"Number of nodes in compressed representation: ${nNodes}")
     println("Caching the compressed graph's vertex isomorphism map to MEMORY_AND_DISK")
-    vertexMap.persist(MEMORY_AND_DISK)
+    val persistedVertexMap = vertexMap.persist(MEMORY_AND_DISK)
     // debug
 //    persist(vertexMap, "src/main/resources/graphs/email-Eu-core/map", 1)
 
-    val sourcesFirst: RDD[(Int, (Int, Long))] = rdd
+    val sourcesFirst: RDD[(Int, (Int, Long))] = persistedRDD
       .map(row => (row._2._1, (row._2._2, row._1)))
 
     sourcesFirst.cache()
     // remap the edges of the graph using the vertexmap
     val res = sourcesFirst
-      .join(vertexMap)
+      .join(persistedVertexMap)
       .map(r => (r._2._1._1, (r._2._2, r._2._1._2)))
-      .join(vertexMap)
+      .join(persistedVertexMap)
       .map(r => (r._2._1._2, (r._2._1._1, r._2._2)))
       .map(r => (r._1, (r._2._1.toInt, r._2._2.toInt)))
       .sortByKey()

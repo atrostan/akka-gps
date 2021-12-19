@@ -13,19 +13,19 @@ import com.algorithm.VertexInfo
 
 object VertexEntity {
   // Hard coded for now
-  val vertexProgram = LocalMaximaColouring
+//  val vertexProgram = LocalMaximaColouring
 //  val vertexProgram = SSSP
-//  val vertexProgram = new PageRank(10)
+  val vertexProgram = new PageRank(10)
 //  val vertexProgram = WCC
 
   type EdgeValT = Int
-  type MessageT = Int
+  type MessageT = Double
 
-  type AccumulatorT = Set[Int]
-//  type AccumulatorT = Int
+//  type AccumulatorT = Set[Int]
+  type AccumulatorT = Double
 
-  type VertexValT = Colour
-//  type VertexValT = Int
+//  type VertexValT = Colour
+  type VertexValT = Double
 
   type SuperStep = Int
 
