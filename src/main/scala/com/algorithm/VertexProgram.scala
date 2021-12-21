@@ -27,7 +27,7 @@ trait VertexProgram[EdgeValT, MessageT, AccumulatorT, VertexValT] {
 
   def scatter(superStepNumber: Int, thisVertex: VertexInfo, oldVal: VertexValT, newVal: VertexValT): Option[MessageT]
 
-  def voteToHalt(superStepNumber: Int, oldVal: VertexValT, newVal: VertexValT): Boolean
+  def deactivateSelf(superStepNumber: Int, oldVal: VertexValT, newVal: VertexValT): Boolean
 
   val defaultVertexValue: VertexValT
 

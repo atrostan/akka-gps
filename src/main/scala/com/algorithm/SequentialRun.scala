@@ -88,7 +88,7 @@ object SequentialRun {
           sendMessage(msgDest, edge, msg)
         }
 
-        val activation = !vertexProgram.voteToHalt(superstep, oldVal, newVal)
+        val activation = !vertexProgram.deactivateSelf(superstep, oldVal, newVal)
         activeMap = activeMap.updated(vtx, activation)
       }
 

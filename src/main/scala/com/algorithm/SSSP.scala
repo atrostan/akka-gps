@@ -4,40 +4,24 @@ object SSSP extends VertexProgram[Int, Int, Int, Int] {
 
   override val mode = VertexProgram.Outwards
 
-  override def gather(edgeVal: Int, message: Int): Int = {
-    edgeVal + message
-  }
+  override def gather(edgeVal: Int, message: Int): Int = edgeVal + message
 
-  override def sum(a: Int, b: Int): Int = {
-    Math.min(a, b)
-  }
+  override def sum(a: Int, b: Int): Int = Math.min(a, b)
 
-  override def apply(
-      superStepNumber: Int,
-      thisVertex: VertexInfo,
-      oldVal: Int,
-      total: Option[Int]
-  ): Int = {
-    if (thisVertex.id == 0) {
-      0
-    } else {
-      total match {
-        case Some(value) => Math.min(oldVal, value)
-        case None        => oldVal
-      }
+  override def apply(superStepNumber: Int, thisVertex: VertexInfo, oldVal: Int, total: Option[Int]): Int = {
+    if (thisVertex.id == 0) 0
+    else total match {
+      case Some(value) => Math.min(oldVal, value)
+      case None        => oldVal
     }
   }
 
   override def scatter(superStepNumber: Int, thisVertex: VertexInfo, oldVal: Int, newVal: Int): Option[Int] = {
-    if (newVal < oldVal) {
-      Some(newVal)
-    } else {
-      assert(newVal == oldVal, s"Unexpected newVal=${newVal}, oldVal=${oldVal}")
-      None
-    }
+    if (newVal < oldVal) Some(newVal)
+    else None
   }
 
-  override def voteToHalt(superStepNumber: Int, oldVal: Int, newVal: Int): Boolean = true
+  override def deactivateSelf(superStepNumber: Int, oldVal: Int, newVal: Int): Boolean = true
 
   override val defaultActivationStatus: Boolean = true
 
