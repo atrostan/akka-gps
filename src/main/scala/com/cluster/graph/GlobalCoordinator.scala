@@ -18,6 +18,9 @@ import akka.stream.javadsl.Partition
 import com.algorithm.Colour
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 
+import java.io.{FileWriter, PrintWriter}
+import java.util.Calendar
+
 /** The central coordinator monitors the state of every vertex in the graph (via the
   * partitionCoordinator), to ensure all vertices are performing the computation for the same
   * superstep. Vertices continue to the next superstep only when they receive a message from the
@@ -29,7 +32,7 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
 
   import GlobalCoordinator._
 
-  val waitTime = 10 seconds
+  val waitTime = 1 minute
   implicit val timeout: Timeout = waitTime
   implicit val ec = ctx.system.executionContext
   implicit val scheduler = ctx.system.scheduler
@@ -44,9 +47,19 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
   var voteCounter = collection.mutable.Map[Int, Int]().withDefaultValue(0)
   var numPartitions = -1
   var numNodes = -1
-
+  var startComputationTime: Long = 0
+  var startMS: Long = 0
+  var endMS: Long = 0
   val finalValues = collection.mutable.Map[Int, VertexEntity.VertexValT]()
   var nPCFinalValues = 0
+  val iterationTimes = collection.mutable.Map[Int, Long]()
+
+  def log(s: String) = {
+    val pw = new FileWriter("./globalLog", true)
+    val currTime: String = Calendar.getInstance().getTime().toString
+    pw.write(s"[${currTime}]\t${s}\n")
+    pw.close()
+  }
 
   def globallyDone(stepNum: Int): Boolean = {
     doneCounter(stepNum) + voteCounter(stepNum) == numPartitions
@@ -58,6 +71,7 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
 
   def broadcastBEGINToPCs(stepNum: Int) = {
     for ((pid, pcRef) <- pcRefs) {
+      log((pid, pcRef, stepNum).toString())
       pcRef ! PartitionCoordinator.BEGIN(stepNum)
     }
   }
@@ -73,16 +87,23 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
         Behaviors.same
 
       case BEGIN() =>
+        log("broadcasting begin 0 to pcs")
+        startComputationTime = System.nanoTime()
+        startMS = System.currentTimeMillis()
+        iterationTimes(0) = System.currentTimeMillis()
         broadcastBEGINToPCs(0)
         Behaviors.same
 
       case DONE(stepNum) =>
         doneCounter(stepNum) += 1
-        println(s"gc : step ${stepNum}: done counter${doneCounter(stepNum)}")
+        log(s"gc : step ${stepNum}: done counter${doneCounter(stepNum)}")
+        log(s"doneCounter(${stepNum})=${doneCounter(stepNum)}")
+        log(s"voteCounter(${stepNum})=${voteCounter(stepNum)}")
 
         if (globallyDone(stepNum)) {
-          println("globally done =========================================================================================================================================")
-          println(s"beginning superstep ${stepNum + 1}")
+          log("globally done =========================================================================================================================================")
+          log(s"beginning superstep ${stepNum + 1}")
+          iterationTimes(stepNum+1) = System.currentTimeMillis()
           broadcastBEGINToPCs(stepNum + 1)
         }
         Behaviors.same
@@ -91,13 +112,28 @@ class GlobalCoordinator(ctx: ActorContext[GlobalCoordinator.Command])
 
         voteCounter(stepNum) += 1
         if (globallyTerminated(stepNum)) {
-          println("TERMINATION")
+          val endTime = System.nanoTime
+          endMS = System.currentTimeMillis()
+          val computationDuration = (endTime - startComputationTime) / 1e9d
+          log(s"Internal global coordinator timer - vertex program took: ${computationDuration}")
+
+          val pw = new FileWriter("./times", true)
+          pw.write(s"$stepNum $startMS $endMS $computationDuration\n")
+          pw.close()
+
+          val iter_pw = new FileWriter("./iterations", true)
+          for ((iterNum, startTime) <- iterationTimes) {
+            iter_pw.write(s"$iterNum $startTime\n")
+          }
+          iter_pw.close();
+          log("TERMINATION")
           //TODO TERMINATE..?
           nPCFinalValues = 0
           for((pid, pcRef) <- pcRefs) {
             pcRef ! PartitionCoordinator.GetFinalValues
           }
         } else if (globallyDone(stepNum)) {
+          iterationTimes(stepNum+1) = System.currentTimeMillis()
           broadcastBEGINToPCs(stepNum + 1)
         }
         Behaviors.same

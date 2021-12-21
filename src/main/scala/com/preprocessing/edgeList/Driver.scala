@@ -3,6 +3,7 @@ package com.preprocessing.edgeList
 import com.Typedefs.{UnweightedEdge, WeightedEdge}
 import com.preprocessing.partitioning.Util.{readEdgeList, saveUnweightedRDDAsDF, saveWeightedRDDAsDF}
 import org.apache.hadoop.fs.{FSDataOutputStream, FileSystem, Path}
+import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 
 import java.io.{BufferedOutputStream, File, PrintWriter}
@@ -18,7 +19,7 @@ runMain com.preprocessing.edgeList.Compressor
 --outputFilename: output path
 --sep:            separator used in input edge list (e.g. " ", ",",  "\t")
 
-runMain com.preprocessing.edgeList.Driver --inputFilename "src/main/resources/graphs/email-Eu-core/orig.net" --outputFilename "src/main/resources/graphs/email-Eu-core/compressed"  --sep " " --isWeighted "false"
+runMain com.preprocessing.edgeList.Driver --inputFilename "src/main/resources/graphs/email-Eu-core/orig.net" --outputFilename "src/main/resources/graphs/email-Eu-core/compressed"  --sep " " --isWeighted "false" --symmetrize "true"
 
 Sort an input edge list by ascending source id. For each source id, the destination ids are also sorted in
 ascending order.
@@ -104,10 +105,10 @@ The edgeList.Compressor will produce
 
     val conf = new SparkConf()
       .setAppName(appName)
+//      .setMaster("local[*]") // uncomment to run locally
     val sc = new SparkContext(conf)
     sc.setLogLevel("ERROR")
     val spark: SparkSession = SparkSession.builder.getOrCreate
-
 
     val hadoopConfig = sc.hadoopConfiguration
     hadoopConfig.set("fs.hdfs.impl", classOf[org.apache.hadoop.hdfs.DistributedFileSystem].getName)
@@ -117,16 +118,29 @@ The edgeList.Compressor will produce
     var outfile = ""
     var sep = ""
     var isWeighted: Boolean = false
+    // set this flag to symmetrize an input graph for bidirectional vertex programs (e.g. Local Maxima Colouring)
+    var symmetrize: Boolean = false
 
     args.sliding(2, 2).toList.collect {
       case Array("--inputFilename", argInFile: String)   => infile = argInFile
       case Array("--outputFilename", argOutFile: String) => outfile = argOutFile
       case Array("--sep", argSep: String)                => sep = argSep
       case Array("--isWeighted", argWt: String)          => isWeighted = argWt.toBoolean
+      case Array("--symmetrize", argSymm: String)        => symmetrize = argSymm.toBoolean
     }
 
+    println("#"*68)
+    println("Compression Args:")
+    println("#"*68)
+
+    println(s"infile: $infile")
+    println(s"outfile: $outfile")
+    println(s"sep: $sep")
+    println(s"isWeighted: $isWeighted")
+    println(s"symmetrize: $symmetrize")
+
     println("reading edge list...")
-    val edgeList = readEdgeList(sc, infile, sep, isWeighted)
+    val edgeList = readEdgeList(sc, infile, sep, isWeighted, symmetrize)
     println("compressing...")
     val c = new Compressor(edgeList)
 
@@ -137,26 +151,44 @@ The edgeList.Compressor will produce
 //      exportYML(infile, c)
 //    }
 
+
+    /**
+      * Check that a valid symmetric graph was created by constructing an adjacency list for each vertex in the graph in
+      * both directions, and check that the two adjacency lists are equal
+      * @param edgeList a compressed edgelist (may or may not be already symmetric)
+      */
+    def checkSymmetric(edgeList: RDD[(Int, Int)]) = {
+      val outs = edgeList.groupByKey()
+      val ins = edgeList.map{ case (src, dest) => (dest, src) }.groupByKey()
+      if (outs.subtract(ins).count() > 0) {
+        throw new RuntimeException("Input Graph was not symmetrized correctly!")
+      } else {
+        println("Correctly symmetrized the graph!")
+      }
+    }
+
     try {
       compressed match {
         case Left(compressed) => // RDD[WeightedEdge]
-//          compressed
-//            .sortBy(r => (r._2._1, r._2._2, r._2._3))
-//            .map(r => s"${r._2._1} ${r._2._2} ${r._2._3}")
-//            .coalesce(1, false)
-//            .saveAsTextFile(outfile)
           val rdd = compressed
             .sortBy(r => (r._2._1, r._2._2, r._2._3))
+
+          // check that graph was correctly symmetrized
+          if (symmetrize) { checkSymmetric(rdd.map{ case (edgeIdx, (u, v, wt)) => (u, v)}) }
+
+          println("Also saving as txt for readability")
+          rdd.coalesce(1).saveAsTextFile(outfile + ".net")
           saveWeightedRDDAsDF(rdd, spark, outfile)
 
         case Right(compressed) => // RDD[UnweightedEdge]
-//          compressed
-//            .sortBy(r => (r._2._1, r._2._2))
-//            .map(r => s"${r._2._1} ${r._2._2}")
-//            .coalesce(1, false)
-//            .saveAsTextFile(outfile)
           val rdd = compressed
             .sortBy(r => (r._2._1, r._2._2))
+
+          // check that graph was correctly symmetrized
+          if (symmetrize) { checkSymmetric(rdd.map{ case (edgeIdx, (u, v)) => (u, v)}) }
+
+          println("Also saving as txt for readability")
+          rdd.coalesce(1).saveAsTextFile(outfile + ".net")
           saveUnweightedRDDAsDF(rdd, spark, outfile)
 
       }

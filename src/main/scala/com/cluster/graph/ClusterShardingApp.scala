@@ -7,18 +7,10 @@ import akka.util.Timeout
 import com.Typedefs.{EMRef, GCRef, PCRef}
 import com.algorithm.Colour
 import com.cluster.graph.EntityManager.{InitializeMains, InitializeMirrors}
-import com.cluster.graph.GlobalCoordinator.{
-  FinalValuesResponseComplete,
-  FinalValuesResponseNotFinished
-}
+import com.cluster.graph.GlobalCoordinator.{FinalValuesResponseComplete, FinalValuesResponseNotFinished}
 import com.cluster.graph.Init._
 import com.cluster.graph.PartitionCoordinator.BroadcastLocation
-import com.preprocessing.partitioning.Util.{
-  readMainPartitionDF,
-  readMirrorPartitionDF,
-  readPartitionsAndJoin,
-  readWorkerPathsFromYaml
-}
+import com.preprocessing.partitioning.Util.{readMainPartitionDF, readMirrorPartitionDF, readPartitionsAndJoin, readWorkerPathsFromYaml}
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.{SparkConf, SparkContext}
@@ -28,10 +20,12 @@ import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 import com.cluster.graph.entity.VertexEntity
+import com.preprocessing.aggregation.Serialization.{readDegTextFile, readMainTextFile, readMirrorTextFile}
+import org.apache.hadoop.fs.FileSystem
 
 object ClusterShardingApp {
 
-  val partitionMap = collection.mutable.Map[Int, Int]()
+  val partitionMap = collection.mutable.Map[Int, String]()
   val partCoordMap = collection.mutable.Map[Int, Int]()
   val numberOfShards = ConfigFactory
     .load("cluster")
@@ -76,7 +70,9 @@ object ClusterShardingApp {
     val workerMap: Map[Int, String] = readWorkerPathsFromYaml(workerPaths: String)
 
     val config = ConfigFactory.load("cluster")
-    println(config.getConfig("ec2"))
+
+//    config.getConfig("akka.partitions")
+//    println(config.getConfig("ec2"))
     val nodesUp = collection.mutable.Set[Member]()
 
     println(s"Initializing cluster with ${nNodes} compute nodes")
@@ -95,22 +91,33 @@ object ClusterShardingApp {
     var pid = 0
     var nMains = 0
     var nMirrors = 0
+    val fs = FileSystem.get(hadoopConfig)
+    val outDegMap = readDegTextFile("/home/atrostan/Documents/flintrock/deploy/bySrc/outdegrees/part-00000", fs)
+    println("outdegmap")
+//    outDegMap.foreach(println)
     for (shardPort <- shardPorts) {
       val path = workerMap(pid)
-      val mains = readMainPartitionDF(path + "/mains", spark).collect()
+      //      val mirrors = readMirrorPartitionDF(path + "/mirrors", spark).collect()
+//      val mains = readMainPartitionDF(path + "/mains", spark).collect()
+      val mains = readMainTextFile(path + "/mains/part-00000", fs)
+      val mirrors = readMirrorTextFile(path + "/mirrors/part-00000", fs)
+
       nMains += mains.length
-      val mirrors = readMirrorPartitionDF(path + "/mirrors", spark).collect()
       nMirrors += mirrors.length
 
+      // the vertices (mains or mirrors) present in this partition
+      val vidSet = mains.map(t => t._1).toSet.union(mirrors.map(t => t._1).toSet)
+
+      val outDegsOnPid = vidSet.foldLeft(Map[Int, Int]()){ (acc, x) => acc + (x -> outDegMap(x)) }
       val pcPort = shardPort + numberOfShards
       val shardConfig = createConfig("shard", shardPort)
       val pcConfig = createConfig("partitionCoordinator", pcPort)
 
-      partitionMap(pid) = shardPort
+      partitionMap(pid) = shardPort.toString
       partCoordMap(pid) = pcPort
 
       val entityManager = ActorSystem[EntityManager.Command](
-        EntityManager(partitionMap, pid, mains, mirrors),
+        EntityManager(partitionMap, pid, mains, mirrors, outDegsOnPid),
         "ClusterSystem",
         shardConfig
       )
@@ -125,7 +132,7 @@ object ClusterShardingApp {
     val frontConfig = createConfig(frontRole, frontPort)
     val entityManager = ActorSystem[EntityManager.Command](
       // the global entity manager is not assigned any mains, mirrors
-      EntityManager(partitionMap, pid, null, null),
+      EntityManager(partitionMap, pid, null, null, null),
       "ClusterSystem",
       frontConfig
     )

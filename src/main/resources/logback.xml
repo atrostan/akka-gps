@@ -1,33 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-    <!-- This is a development logging configuration that logs to standard out, for an example of a production
-        logging config, see the Akka docs: https://doc.akka.io/docs/akka/2.6/typed/logging.html#logback -->
-    <!--    <appender name="STDOUT" target="System.out" class="ch.qos.logback.core.ConsoleAppender">-->
-    <!--        <encoder>-->
-    <!--            <pattern>[%date{ISO8601}] [%level] [%logger] [%thread] [%X{akkaSource}] - %msg%n</pattern>-->
-    <!--        </encoder>-->
-    <!--    </appender>-->
 
-    <!--    <appender name="ASYNC" class="ch.qos.logback.classic.AsyncAppender">-->
-    <!--        <queueSize>1024</queueSize>-->
-    <!--        <neverBlock>true</neverBlock>-->
-    <!--        <appender-ref ref="STDOUT" />-->
-    <!--    </appender>-->
-
-    <!--    <root level="INFO">-->
-    <!--        <appender-ref ref="ASYNC"/>-->
-    <!--    </root>-->
-
-    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
-        <file>${application.home:-.}/logs/application.log</file>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>INFO</level>
+        </filter>
         <encoder>
-            <pattern>[%date{ISO8601}] [%level] [%logger] [%thread] [%X{akkaSource}] - %msg%n</pattern>
+            <pattern>[%date{ISO8601}] [%level] [%logger] [%marker] [%thread] - %msg MDC: {%mdc}%n</pattern>
         </encoder>
     </appender>
 
-    <appender name="ASYNC" class="ch.qos.logback.classic.AsyncAppender">
-        <queueSize>1024</queueSize>
-        <neverBlock>true</neverBlock>
+    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>akka.log</file>
+        <encoder>
+            <pattern>[%date{ISO8601}] [%level] [%logger] [%marker] [%thread] - %msg MDC: {%mdc}%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="DEBUG">
+        <appender-ref ref="STDOUT"/>
         <appender-ref ref="FILE"/>
+    </root>
+
+    <appender name="ASYNC" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>8192</queueSize>
+        <neverBlock>true</neverBlock>
+        <appender-ref ref="FILE" />
     </appender>
 
     <root level="INFO">

@@ -7,7 +7,6 @@ object VertexProgram {
   case object Bidirectional extends Mode // Send messages to both out-neighbours and in-neighbours
 }
 
-
 // Stateless
 trait VertexProgram[EdgeValT, MessageT, AccumulatorT, VertexValT] {
 

@@ -1,22 +1,54 @@
 package com.preprocessing.partitioning
 
+import akka.serialization.Serialization
 import com.Typedefs._
+import com.preprocessing.aggregation.Serialization.{Main, writeMainArray, writeMirrorArray}
 import org.apache.commons.io.FileUtils.{cleanDirectory, deleteDirectory}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.types._
-import org.apache.spark.sql.{Row, SparkSession}
+import org.apache.spark.sql.{Dataset, Row, SparkSession}
 import org.apache.spark.{Partitioner, SparkContext}
 import org.yaml.snakeyaml.Yaml
 
-import java.io.{File, FileInputStream}
+import java.io.{
+  DataInput,
+  DataOutput,
+  File,
+  FileInputStream,
+  FileNotFoundException,
+  FileOutputStream,
+  IOException,
+  ObjectOutputStream,
+  OutputStream
+}
 import java.nio.file.Files.createDirectories
 import java.nio.file.{Files, Path, Paths}
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.FileSystem
+import org.apache.hadoop.fs.{Path => HDFSPath}
+import org.apache.hadoop.io.{ArrayWritable, Writable}
+import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK
 
 object Util {
+
+  def listFolderNamesInFolder(hdfsPath: String): List[String] =
+    FileSystem
+      .get(new Configuration())
+      .listStatus(new HDFSPath(hdfsPath))
+      .flatMap(status => if (!status.isFile) Some(status.getPath.getName) else None)
+      .toList
+
+  def moveFile(oldPath: String, newPath: String): Unit = {
+    val fileSystem = FileSystem.get(new Configuration())
+    fileSystem.rename(new HDFSPath(oldPath), new HDFSPath(newPath))
+  }
+
+  def createFolder(hdfsPath: String): Unit =
+    FileSystem.get(new Configuration()).mkdirs(new HDFSPath(hdfsPath))
 
   val weightedSchema = StructType(
     List(
@@ -186,36 +218,69 @@ object Util {
       sc: SparkContext,
       infile: String,
       sep: String,
-      isWeighted: Boolean
+      isWeighted: Boolean,
+      symmetrize: Boolean
   ): EitherEdgeRDD = {
     val strList: RDD[String] = sc.textFile(infile)
     val split = strList
       .filter(s => !s.contains("#"))
       .map(s => s.split(sep))
     if (isWeighted) {
-      Left(
-        split
-          .map(s => ((s(0).toInt, s(1).toInt), s(2).toInt))
-          .reduceByKey(
-            math.max(_, _)
-          ) // if multiple edges between same source and dest, take the maximum weighted edge
-          .map(row => (row._1._1, row._1._2, row._2)) // unpack again
-          .distinct()
-          .filter(e => e._1 != e._2)
-          .sortBy(e => (e._1, e._2, e._3))
-          .zipWithUniqueId()
-          .map(r => (r._2, r._1))
-      )
+      if (symmetrize) {
+        Left(
+          split
+            .map(s => ((s(0).toInt, s(1).toInt), s(2).toInt))
+            // if multiple edges between same source and dest, take the maximum weighted edge
+            .reduceByKey(
+              math.max(_, _)
+            )
+            .map(row => (row._1._1, row._1._2, row._2)) // unpack again
+            .flatMap{ case (u, v, wt) => List((u, v, wt), (v, u, wt))} // add an edge in the opposite direction
+            .distinct()
+            .filter(e => e._1 != e._2)
+            .sortBy(e => (e._1, e._2, e._3))
+            .zipWithUniqueId()
+            .map(r => (r._2, r._1))
+        )
+      } else {
+        Left(
+          split
+            .map(s => ((s(0).toInt, s(1).toInt), s(2).toInt))
+            // if multiple edges between same source and dest, take the maximum weighted edge
+            .reduceByKey(
+              math.max(_, _)
+            )
+            .map(row => (row._1._1, row._1._2, row._2)) // unpack again
+            .distinct()
+            .filter(e => e._1 != e._2)
+            .sortBy(e => (e._1, e._2, e._3))
+            .zipWithUniqueId()
+            .map(r => (r._2, r._1))
+        )
+      }
     } else {
-      Right(
-        split
-          .map(s => (s(0).toInt, s(1).toInt))
-          .distinct()
-          .filter(e => e._1 != e._2)
-          .sortBy(e => (e._1, e._2))
-          .zipWithUniqueId()
-          .map(r => (r._2, r._1))
-      )
+      if (symmetrize) {
+        Right(
+          split
+            .map(s => (s(0).toInt, s(1).toInt))
+            .flatMap{ case (u, v) => List((u, v), (v, u))} // add an edge in the opposite direction
+            .distinct()
+            .filter(e => e._1 != e._2)
+            .sortBy(e => (e._1, e._2))
+            .zipWithUniqueId()
+            .map(r => (r._2, r._1))
+        )
+      } else {
+        Right(
+          split
+            .map(s => (s(0).toInt, s(1).toInt))
+            .distinct()
+            .filter(e => e._1 != e._2)
+            .sortBy(e => (e._1, e._2))
+            .zipWithUniqueId()
+            .map(r => (r._2, r._1))
+        )
+      }
     }
   }
 
@@ -299,6 +364,18 @@ object Util {
         .mode("overwrite")
         .format(format)
         .save(formattedPath)
+
+//      println("Also saving as space separated values for readability")
+//      val tsvWithHeaderOptions: Map[String, String] = Map(
+//        ("delimiter", " "), // Uses " " delimiter instead of default ","
+//        ("header", "false"))  // Writes a header record with column names
+//
+//      df
+//        .coalesce(1)
+//        .write
+//        .mode("overwrite")
+//        .options(tsvWithHeaderOptions)
+//        .csv(path + ".csv")
     }
   }
 
@@ -330,9 +407,9 @@ object Util {
   def partitionMainsDF(
       mains: RDD[TaggedMainRow],
       spark: SparkSession,
-      partitionMap: Map[Int, String]
-  ): Unit = {
-
+      partitionMap: Map[Int, String],
+      fs: FileSystem
+  ): mutable.TreeMap[Int, Long] = {
     val rowRDD = mains.map {
       case (
             (vid: Int, pid: Int),
@@ -349,18 +426,25 @@ object Util {
         )
     }
     val df = spark.createDataFrame(rowRDD, mainRowSchema)
+    val mainsPerPartition = mutable.TreeMap[Int, Long]()
     for ((pid, path) <- partitionMap) {
       println(s"writing mains to ${path}/mains")
+      createFolder(path)
       val partition = df.filter(s"partitionId == ${pid}")
-      partition.write.mode("overwrite").parquet(path + "/mains")
+      val nMains = partition.count()
+      mainsPerPartition += (pid -> nMains)
+//      partition.write.mode("overwrite").parquet(path + "/mains")
+      writeMainArray(partition, path + "/mains", fs)
     }
+    mainsPerPartition
   }
 
   def partitionMirrorsDF(
       mirrors: RDD[TaggedMirrorRow],
       spark: SparkSession,
-      partitionMap: Map[Int, String]
-  ): Unit = {
+      partitionMap: Map[Int, String],
+      fs: FileSystem
+  ): mutable.TreeMap[Int, Long] = {
     val rowRDD = mirrors.map {
       case (
             (vid: Int, pid: Int),
@@ -377,11 +461,17 @@ object Util {
         )
     }
     val df = spark.createDataFrame(rowRDD, mirrorRowSchema)
+    val mirrorsPerPartition = mutable.TreeMap[Int, Long]()
+
     for ((pid, path) <- partitionMap) {
       println(s"writing mirrors to ${path}/mirrors")
       val partition = df.filter(s"partitionId == ${pid}")
-      partition.write.mode("overwrite").parquet(path + "/mirrors")
+      val nMirrors = partition.count()
+      mirrorsPerPartition += (pid -> nMirrors)
+      //      partition.write.mode("overwrite").parquet(path + "/mirrors")
+      writeMirrorArray(partition, path + "/mirrors")
     }
+    mirrorsPerPartition
   }
 
   val mainRowSchema = StructType(
@@ -434,8 +524,18 @@ object Util {
         StructField("partitionInDegree", IntegerType, false)
       )
     )
-
+    println("made schema")
     val rowRDD = spark.read.schema(partitionedMainRowSchema).parquet(path).rdd
+    rowRDD.foreach {
+      case Row(
+            vid: Int,
+            pidsWithMirrors: mutable.WrappedArray[Int],
+            neighs: mutable.WrappedArray[Int],
+            partitionInDegree: Int
+          ) =>
+        println(vid, pidsWithMirrors, neighs, partitionInDegree)
+    }
+    println("made rowRDD; mapping, and returning")
     rowRDD.map {
       case Row(
             vid: Int,
@@ -618,7 +718,7 @@ object Util {
           )
       )
     }
-    rdds.reduce(_.union(_))
+    rdds.reduce(_.union(_)).persist(MEMORY_AND_DISK)
   }
 
   /** Given a partition edgelist, calculate:
@@ -662,7 +762,7 @@ object Util {
 
     val degrees = allOutDegrees.fullOuterJoin(allInDegrees)
 
-    (degrees, outNeighbors, inDegreesPerPartition)
+    (degrees.persist(MEMORY_AND_DISK), outNeighbors.persist(MEMORY_AND_DISK), inDegreesPerPartition.persist(MEMORY_AND_DISK))
   }
 
   /** Given the per-partition out degree and in degree of every node in the graph, assign each node
@@ -671,10 +771,19 @@ object Util {
     * @param degrees
     */
   def partitionAssignment(
-      degrees: RDD[(Int, (Option[Iterable[Int]], Option[Iterable[Int]]))],
-      outNeighbors: RDD[((Int, Int), Iterable[(Int, Int)])],
-      inDegreesPerPartition: RDD[((Int, Int), Int)]
+      ds: RDD[(Int, (Option[Iterable[Int]], Option[Iterable[Int]]))],
+      outNs: RDD[((Int, Int), Iterable[(Int, Int)])],
+      inDegsPerPartition: RDD[((Int, Int), Int)]
   ) = {
+    println("Caching degrees to MEMORY_AND_DISK")
+    val degrees = ds.persist(MEMORY_AND_DISK)
+
+    println("Caching outNeighbors to MEMORY_AND_DISK")
+    val outNeighbors = outNs.persist(MEMORY_AND_DISK)
+
+    println("Caching inDegreesPerPartition to MEMORY_AND_DISK")
+    val inDegreesPerPartition = inDegsPerPartition.persist(MEMORY_AND_DISK)
+
     val vertexMainAndMirrors: RDD[((Int, Int), Set[_ <: Int])] = degrees
       .map {
         case (
@@ -685,40 +794,75 @@ object Util {
               )
             ) =>
           mainMirrorAssignment(vid, psWithOutNeighbors, psWithInNeighbors)
-      }
+      }.persist(MEMORY_AND_DISK)
       .map(t => ((t._1, t._2), t._3))
 
+    // cache the mains in memory so that a consistent, deterministic location is propagated to their mirrors
+    println("Caching Vertex Main and Mirror assignment to MEMORY_AND_DISK")
+    val persistedVertexMainAndMirrors = vertexMainAndMirrors.persist(MEMORY_AND_DISK)
 
-
-    vertexMainAndMirrors
-      .cache() // cache the mains in memory so that their correct location can be propagated to their mirrors
-    val mirrors = vertexMainAndMirrors.flatMap { case ((vid: Int, _), mirrorPids: Set[Int]) =>
+    val mirrors = persistedVertexMainAndMirrors.flatMap { case ((vid: Int, _), mirrorPids: Set[Int]) =>
       mirrorPids.map(mirrorPid => (vid, mirrorPid))
     }
 
     // add (partition-local) outgoing neighbours and partition in degree to mains
-    val mains = vertexMainAndMirrors
+    val mains = persistedVertexMainAndMirrors
       .leftOuterJoin(outNeighbors)
       .leftOuterJoin(inDegreesPerPartition)
       .map(row => cleanupMainRow(row))
 
-    val mainPids = vertexMainAndMirrors.map { case ((vid: Int, pid: Int), _: Set[Any]) =>
+    val mainPids = persistedVertexMainAndMirrors.map { case ((vid: Int, pid: Int), _: Set[Any]) =>
       (vid, pid)
     }
+
+    val wrongMirrors = mirrors
+      .join(mainPids)
+      .map { case (vid, (pid, mainPid)) => ((vid, pid), mainPid) }
+      .filter { case ((_, pid), mainPid) => pid == mainPid }
+
+    // Persistence of Main vertex assignment: Sanity check #1
+    // ensure that no mirrors have been assigned to the same partition as their main
+    val nWrongMirrors = wrongMirrors.count()
+    if (nWrongMirrors > 0) {
+      throw new RuntimeException(
+        s"${nWrongMirrors} mirrors were assigned to the same partition as their main!"
+      )
+    }
     val mirrorsWithMainPids = mirrors
-      // add the main partition id to each mirror vertex (mirrors should know the location of their main)
+      // add the main partition id to each mirror vertex
+      // (mirrors should know the location of their main)
       .join(mainPids)
       .map { case (vid: Int, (pid: Int, mainPid: Int)) => ((vid, pid), mainPid) }
       .leftOuterJoin(outNeighbors)
       .leftOuterJoin(inDegreesPerPartition)
       .map(row => cleanupMirrorRow(row))
 
-    val nInEdges =
-      mirrorsWithMainPids.map(t => t._4).reduce(_ + _) + mains.map(t => t._4).reduce(_ + _)
-    val nOutEdges = mirrorsWithMainPids.map(t => t._3.size).reduce(_ + _) +
-      mains.map(t => t._3.size).reduce(_ + _)
-    println("nInEdges: ", nInEdges)
-    println("nOutEdges: ", nOutEdges)
+    val mirrorInEdgeSum = mirrorsWithMainPids
+      .map { case ((_, _), _, _, partitionInDeg) => partitionInDeg }
+      .reduce(_ + _)
+    val mainInEdgeSum = mains
+      .map { case ((_, _), _, _, partitionInDeg) => partitionInDeg }
+      .reduce(_ + _)
+    val mirrorOutEdgeSum = mirrorsWithMainPids
+      .map { case ((_, _), _, ns, _) => ns.size }
+      .reduce(_ + _)
+    val mainOutEdgeSum = mains
+      .map { case ((_, _), _, ns, _) => ns.size }
+      .reduce(_ + _)
+
+    val nInEdges = mirrorInEdgeSum + mainInEdgeSum
+    val nOutEdges = mirrorOutEdgeSum + mainOutEdgeSum
+
+    // Persistence of Main vertex assignment: Sanity check #2
+    if (nInEdges != nOutEdges) {
+      throw new RuntimeException(
+        s"Discrepancy between the number of inedges and outedges in the graph: ${nInEdges} != ${nOutEdges}!"
+      )
+    }
+
+    println(
+      s"Number of In Edges in the graph == Number of Out Edges in the graph; ${nOutEdges} == ${nInEdges}"
+    )
     // TODO: can calculate replication factor here
 
     (mains, mirrorsWithMainPids)
@@ -743,13 +887,12 @@ object Util {
     pMap.toMap
   }
 
-  /** Tag each edge in the graph using the following definitions: Each edge is assigned to a partition
-    * in the partitioning step. Also, the main assignment step assigned each vertex as a main
-    * vertex to some partition. In the following, an edge is between source id -> destination id:
-    * if an edge is between main -> main, label that edge as 0
-    * if an edge is between main -> mirror, label that edge as 1
-    * if an edge is between mirror -> main, label that edge as 2
-    * if an edge is between mirror -> mirror, label that edge as 3
+  /** Tag each edge in the graph using the following definitions: Each edge is assigned to a
+    * partition in the partitioning step. Also, the main assignment step assigned each vertex as a
+    * main vertex to some partition. In the following, an edge is between source id -> destination
+    * id: if an edge is between main -> main, label that edge as 0 if an edge is between main ->
+    * mirror, label that edge as 1 if an edge is between mirror -> main, label that edge as 2 if an
+    * edge is between mirror -> mirror, label that edge as 3
     * @param mains
     * @param edgeList
     * @return

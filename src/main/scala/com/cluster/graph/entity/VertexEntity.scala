@@ -13,19 +13,19 @@ import com.algorithm.VertexInfo
 
 object VertexEntity {
   // Hard coded for now
-  val vertexProgram = LocalMaximaColouring
+//  val vertexProgram = LocalMaximaColouring
 //  val vertexProgram = SSSP
-//  val vertexProgram = new PageRank(10)
+  val vertexProgram = new PageRank(10)
 //  val vertexProgram = WCC
 
   type EdgeValT = Int
-  type MessageT = Int
+  type MessageT = Double
 
-  type AccumulatorT = Set[Int]
-//  type AccumulatorT = Int
+//  type AccumulatorT = Set[Int]
+  type AccumulatorT = Double
 
-  type VertexValT = Colour
-//  type VertexValT = Int
+//  type VertexValT = Colour
+  type VertexValT = Double
 
   type SuperStep = Int
 
@@ -64,6 +64,7 @@ object VertexEntity {
       neighbors: List[(EntityId, Int)],
       mirrors: List[EntityId],
       inDegree: Int,
+      outDeg: Int,
       replyTo: ActorRef[InitializeResponse]
   ) extends Command
   final case class InitializeMirror(
@@ -71,13 +72,13 @@ object VertexEntity {
       partitionId: Int,
       main: EntityId,
       neighs: List[(EntityId, Int)],
-      inDegree: Int,
+      partitionInDegree: Int,
+      outDegree: Int,
       replyTo: ActorRef[InitializeResponse]
   ) extends Command
 
   // Init Sync Response
   final case class InitializeResponse(message: String) extends Response
-
 
   // Counter actions TESTING ONLY
   case object Increment extends Command
@@ -144,7 +145,7 @@ trait VertexEntity {
   def reactToNeighbourMessage(neighbourMessage: NeighbourMessage): Behavior[Command] =
     neighbourMessage match {
       case NeighbourMessage(stepNum, edgeVal, msg) => {
-        ctxLog("Received neighbour msg " + msg)
+//        ctxLog("Received neighbour msg " + msg)
         (edgeVal, msg) match {
           case (None, None) => {
             // nothing
